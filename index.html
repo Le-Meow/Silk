@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101c18"><meta name="description" content="Play as an orb-weaver in a dew-covered garden. Follow the tremors and wrap your prey before dawn.">
+  <link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon-192.png">
+  <title>Silk · The garden hunt</title>
+</head>
+<body>
+  <main id="game">
+    <canvas id="scene" aria-label="Garden web. Tap a point on the silk to crawl there."></canvas>
+    <header>
+      <span class="brand"><i class="mark" aria-hidden="true">✳</i> Silk</span>
+      <button id="pause" class="round" aria-label="Pause hunt" hidden>Ⅱ</button>
+    </header>
+    <div id="stats" hidden><span><b id="score">0 / 5</b> moths</span><span><b id="time">1:00</b> left</span></div>
+    <div id="target" hidden aria-hidden="true"><i></i></div>
+    <div class="shade"></div>
+    <section id="panel">
+      <div class="eyebrow" id="kicker">The garden hunt</div>
+      <h1 id="title">Silk</h1>
+      <p id="copy">Hunt as an orb-weaver. Follow the tremors and wrap five moths before dawn.</p>
+      <button class="primary" id="action" disabled>Preparing web…</button>
+    </section>
+    <div id="controls" hidden>
+      <span id="hint" aria-live="polite">Tap a moth to follow its vibration.</span>
+      <button id="wrap" class="primary" disabled>Hold to wrap</button>
+    </div>
+    <div id="announce" class="sr" role="status"></div>
+  </main>
+  <script type="module" src="./src/main.ts"></script>
+</body></html>
