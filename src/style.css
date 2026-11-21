@@ -31,5 +31,16 @@ kbd{font:10px system-ui;opacity:.72}#player-marker{position:absolute;z-index:1;w
 #guide{bottom:max(152px,calc(env(safe-area-inset-bottom) + 140px));max-width:clamp(275px,62vw,450px)}#hint{font-size:14px}
 #game[data-prey="dying"] .prey-target,#game[data-prey="dead"] .prey-target{border-style:solid;opacity:.65}
 #game[data-prey="wrapping"] #wrap::after{content:"";position:absolute;inset:-3px;border-radius:50%;pointer-events:none;background:conic-gradient(#ffdf9d var(--wound,0deg),transparent 0);mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 0)}
-@media(pointer:coarse){kbd{display:none}}
+#game{--key-hint:inline-block}
+@media(pointer:coarse){#game{--key-hint:none}}
+#game[data-input="keyboard"]{--key-hint:inline-block}
+#game[data-input="touch"]{--key-hint:none}
+kbd,#menu-keys{display:var(--key-hint)}
+#menu-keys{font-size:13px;line-height:1.7;margin:0 0 12px;width:100%}
+#menu-keys kbd,#begin:enabled::after{border:1px solid currentColor;border-radius:3px;padding:0 3px;font:600 11px/1.4 system-ui}
+#begin:enabled::after{display:var(--key-hint);content:"Enter";margin-left:9px}
+#stick-cap{display:grid;place-items:center;text-align:center}
+#stick-cap kbd,#pause kbd{font:600 10px/1.1 system-ui;opacity:.9}
+#pause{position:relative}
+#pause kbd{position:absolute;right:calc(100% + 6px);top:50%;transform:translateY(-50%);text-shadow:0 1px 3px #111}
 @media(max-height:520px) and (min-aspect-ratio:1/1){#controller{bottom:9px}#stick{width:95px}.buttons{height:112px}#guide{left:132px;right:167px;bottom:10px}#event{font-size:20px}#hint{font-size:13px}#hud{top:9px}}

@@ -94,7 +94,7 @@ async function boot(){
     stage='play';prey=new Prey(trap,knots);
     weaver.reset(knots[0]);prey.step(0,weaver.position,false);focus.set(.34,0,.02);cameraPose();
     menu.hidden=true;hud.hidden=get('pause').hidden=false;controllerVisibility();reserve();
-    note('Set the trap','Press Silk to span the gap. Hold it and aim with the stick to choose a different knot.');
+    note('Set the trap','Press Silk to span the gap. Hold it and steer to aim at a different knot.');
   }
   function finish(won:boolean){
     stage=won?'won':'lost';controls.reset();weaver.drive(0,0);cancelGesture();controllerVisibility();
@@ -150,7 +150,7 @@ async function boot(){
     const gap=project(center.multiplyScalar(.25));
     aim={origin,target:chooseKnot(origin,gap.x-from.x,from.y-gap.y)};
     updateAim();weaver.drive(0,0);
-    note('Aim silk','Move the stick to choose a gold knot. Release Silk to cast.');
+    note('Aim silk','Steer toward a gold knot. Release Silk to cast.');
   }
   function releaseSilk(canceled:boolean){
     if(!aim)return;
@@ -225,7 +225,15 @@ async function boot(){
   canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=T.MathUtils.clamp(zoom*Math.exp(-e.deltaY*.001),.75,1.7);cameraPose();},{passive:false});
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&isPlaying())pause();});
   window.addEventListener('blur',()=>{controls.reset();weaver.drive(0,0);cancelGesture();});
-  window.addEventListener('keydown',e=>{if(e.key==='Escape'&&stage==='play'&&!e.repeat)pause();});
+  window.addEventListener('keydown',e=>{
+    if(e.repeat||e.metaKey||e.altKey||e.ctrlKey)return;
+    if(e.key==='Escape'&&stage==='play'){e.preventDefault();pause();}
+    if(e.key==='Enter'&&!menu.hidden&&!begin.disabled){
+      // Focused buttons already support Enter through their native click event.
+      if(e.target instanceof HTMLButtonElement&&!e.target.closest('[hidden]'))return;
+      e.preventDefault();begin.click();
+    }
+  });
 
   function event(result:PreyEvent){
     if(result==='wrapped'){finish(true);return;}

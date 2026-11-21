@@ -1,6 +1,6 @@
 # Silk
 
-A touch-controlled Three.js game about a garden orb-weaver. A moth repeatedly flies through a tear in the web. You have three passes and a limited supply of silk to intercept it.
+A Three.js game about a garden orb-weaver, playable with touch or a keyboard. A moth repeatedly flies through a tear in the web. You have three passes and a limited supply of silk to intercept it.
 
 ## Playing
 
@@ -10,7 +10,7 @@ The left thumbstick controls the spider directly. Push gently to creep, push far
 - **Bite** lunges with the fangs. The button lights up when a flying or trapped moth is within reach. A successful bite triggers a final wingbeat and collapse.
 - **Wrap** winds silk around subdued prey if you are close enough. Stay beside it to finish. If you move away, the existing winding stays in place and you can return and resume.
 
-On a keyboard use WASD or the arrow keys to steer, Q for Silk, J to bite, K to wrap and Escape to pause.
+On a keyboard, press Enter to start. Steer with WASD or the arrow keys and release to stop. Tap Q to cast across the gap, or hold Q, aim with the movement keys and release Q to cast. Press J to bite, K to wrap, and Esc to pause or resume. Enter also resumes or starts a fresh web from the end screen.
 
 ## Running the game
 

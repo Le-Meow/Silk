@@ -8,11 +8,26 @@ type Callbacks = {
 export function setupControls(callbacks: Callbacks) {
   const stick = document.getElementById('stick')!;
   const cap = document.getElementById('stick-cap')!;
+  const game = document.getElementById('game')!;
+  const keyActions: Record<string, Action> = { KeyQ:'silk', KeyJ:'bite', KeyK:'wrap' };
   const keys = new Set<string>();
   const fingers = new Map<Action, number>();
   const axes = { x: 0, y: 0 };
   let stickId: number | null = null;
   let touchX = 0, touchY = 0;
+
+  document.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'touch') game.dataset.input = 'touch';
+  }, {capture:true});
+
+  function syncAction(action: Action, canceled = false) {
+    const held = fingers.has(action) || Array.from(keys).some(code => keyActions[code] === action);
+    const button = document.getElementById(action)!;
+    if (held === button.classList.contains('pressed')) return;
+    button.classList.toggle('pressed', held);
+    if (held) callbacks.press(action);
+    else if (action === 'silk') callbacks.releaseSilk(canceled);
+  }
 
   function sample() {
     const right = keys.has('KeyD') || keys.has('ArrowRight');
@@ -57,13 +72,11 @@ export function setupControls(callbacks: Callbacks) {
     button.addEventListener('pointerdown', e => {
       if (!callbacks.active() || fingers.has(action) || e.button !== 0) return;
       e.preventDefault(); fingers.set(action, e.pointerId);
-      button.setPointerCapture(e.pointerId); button.classList.add('pressed');
-      callbacks.press(action);
+      button.setPointerCapture(e.pointerId); syncAction(action);
     });
     const end = (e: PointerEvent) => {
       if (fingers.get(action) !== e.pointerId) return;
-      fingers.delete(action); button.classList.remove('pressed');
-      if (action === 'silk') callbacks.releaseSilk(e.type !== 'pointerup');
+      fingers.delete(action); syncAction(action, e.type !== 'pointerup');
     };
     button.addEventListener('pointerup',end);
     button.addEventListener('pointercancel',end);
@@ -74,19 +87,20 @@ export function setupControls(callbacks: Callbacks) {
       if (action === 'silk') callbacks.releaseSilk(false);
     });
   }
-  const keyActions: Record<string, Action> = { KeyQ:'silk', KeyJ:'bite', KeyK:'wrap' };
   const moveKeys = new Set(['KeyA','KeyW','KeyS','KeyD','ArrowLeft','ArrowUp','ArrowDown','ArrowRight']);
   window.addEventListener('keydown', e => {
-    if (!callbacks.active() || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (!moveKeys.has(e.code) && !keyActions[e.code]) return;
-    e.preventDefault(); if (keys.has(e.code)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const bound = moveKeys.has(e.code) || Boolean(keyActions[e.code]);
+    if (bound || ['Tab','Enter','Escape'].includes(e.key)) game.dataset.input = 'keyboard';
+    if (!callbacks.active() || !bound) return;
+    e.preventDefault(); if (e.repeat || keys.has(e.code)) return;
     keys.add(e.code); sample();
-    if (keyActions[e.code]) callbacks.press(keyActions[e.code]);
+    if (keyActions[e.code]) syncAction(keyActions[e.code]);
   });
   window.addEventListener('keyup', e => {
     if (!keys.delete(e.code)) return;
     sample();
-    if (e.code === 'KeyQ') callbacks.releaseSilk(!callbacks.active());
+    if (keyActions[e.code]) syncAction(keyActions[e.code], !callbacks.active());
   });
   function reset() {
     keys.clear(); fingers.clear(); stickId = null; touchX = touchY = 0;
