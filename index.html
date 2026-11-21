@@ -7,11 +7,19 @@
 <title>Silk · The broken web</title>
 </head>
 <body><main id="game">
-<canvas id="scene" aria-label="Living orb web. Drag between golden knots to weave, tug silk to pluck it, or tap to crawl."></canvas>
+<canvas id="scene" aria-label="Living orb web. Use the left stick to crawl. Silk, Bite and Wrap are on the right."></canvas>
 <div class="veil"></div>
 <header><span class="wordmark">Silk</span><button id="pause" aria-label="Pause encounter" hidden><span aria-hidden="true"></span></button></header>
 <div id="hud" hidden><div><span>Silk reserve</span><strong id="reserve">100%</strong><meter id="meter" min="0" max="100" value="100"></meter></div><div><span>Moth pass</span><strong id="pass">1 / 3</strong></div></div>
-<div id="marks" hidden></div><div class="prey-target" hidden></div>
-<section id="menu"><small id="eyebrow">The broken web</small><h1 id="title">Silk</h1><p id="copy">A moth circles a tear in your web. Cast silk across its flight path, then run to the impact before the thread gives.</p><button id="begin" disabled>Waking the garden…</button></section>
+<div id="marks" hidden></div><div class="prey-target" hidden></div><div id="player-marker" aria-hidden="true" hidden></div>
+<section id="menu"><small id="eyebrow">The broken web</small><h1 id="title">Silk</h1><p id="copy">A moth circles a tear in your web. Steer the orb-weaver with your left thumb. Cast a line across the gap, bite the moth, then wind it in silk.</p><button id="begin" disabled>Waking the garden…</button></section>
 <div id="guide" hidden><strong id="event">Read the flight</strong><p id="hint" aria-live="polite"></p></div>
+<div id="controller" hidden>
+  <div id="stick" role="group" aria-label="Movement stick. Arrow keys or WASD also move."><span class="notches"></span><span id="stick-cap"></span></div>
+  <div class="buttons">
+    <button type="button" id="silk" aria-label="Aim and cast silk"><span>Silk</span><kbd>Q</kbd></button>
+    <button type="button" id="bite" aria-label="Bite"><span>Bite</span><kbd>J</kbd></button>
+    <button type="button" id="wrap" aria-label="Wrap"><span>Wrap</span><kbd>K</kbd></button>
+  </div>
+</div>
 </main><script type="module" src="./src/main.ts"></script></body></html>

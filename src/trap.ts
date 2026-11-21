@@ -82,6 +82,7 @@ export class Trap {
         // A new thread is pulled down onto the old one, even if the wind has
         // bowed the old span out of the web's plane.
         const edge=this.link(pair[0],pair[1]);
+        w.segments[edge].binding=true;
         w.segments[edge].rest=Math.min(.025,w.segments[edge].rest);
         this.bindings.push({a:thread,b:old,edge});
       }
@@ -104,14 +105,14 @@ export class Trap {
   }
   // Contact is measured on each live length, including the space between crossings.
   contact(at:Vector3){
-    let best=.095, hit:null|{node:number;thread:Thread;edge:number}=null;
+    let best=.095, hit:null|{node:number;thread:Thread;edge:number;t:number}=null;
     const a=new Vector3(),b=new Vector3(),d=new Vector3(),q=new Vector3();
     for(const thread of this.threads) for(const edge of thread.edges){
       const seg=this.web.segments[edge];if(!seg.alive)continue;
       this.point(seg.a,a);this.point(seg.b,b);d.subVectors(b,a);
       const t=Math.max(0,Math.min(1,q.subVectors(at,a).dot(d)/Math.max(1e-9,d.lengthSq())));
       const miss=q.copy(a).addScaledVector(d,t).distanceTo(at);
-      if(miss<best){best=miss;hit={node:t<.5?seg.a:seg.b,thread,edge};}
+      if(miss<best){best=miss;hit={node:t<.5?seg.a:seg.b,thread,edge,t};}
     }
     return hit;
   }

@@ -4,14 +4,14 @@ import * as THREE from "three/webgpu";
 import { Fn, cameraPosition, color, dot, fract, max, mix, mx_fractal_noise_float, normalWorld, normalize, positionLocal, positionWorld, pow, smoothstep } from "three/tsl";
 import { sky } from "./visuals/backdrop";
 import type { Web } from "./web";
+import { SilkSteering } from "./steering";
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- TSL's node types do not model every operator. */
 
 // The web's owner, built and moved like the real animal. Each leg is coxa, femur, patella, tibia, metatarsus and tarsus,
 // of fixed lengths, solved each frame so the femur rises to a high knee and the lower leg comes down steeply to a foot
 // that grips a thread, and rides that thread as the web swings. She walks in an alternating tetrapod: legs 1 and 3 of
-// one side with 2 and 4 of the other, the two sets taking turns, each set rippling from back to front. She runs in
-// dashes with sudden freezes, as spiders do, feels about with her palps when she stops, and sits head down at the hub.
+// one side with 2 and 4 of the other, the two sets taking turns, each set rippling from back to front.
 
 // Segment lengths of one leg, as fractions of its whole: coxa, trochanter-femur, patella, tibia, metatarsus, tarsus.
 const SEGMENTS = [0.07, 0.3, 0.08, 0.24, 0.22, 0.09];
@@ -203,18 +203,19 @@ export function createWeaver(web: Web, golden = false) {
     };
   })();
 
+  const steering = new SilkSteering(web);
   const state = {
-      route: [web.hub],
-      leg: 0,
-      u: 0,
       speed: 0,
-      // Stop-go: how long the current dash or freeze lasts.
-      dash: 0,
-      frozen: 0,
       dip: 0,
-      // When she last felt the web with a foreleg.
-      tug: 2,
-      at: new THREE.Vector3(),
+      at: steering.position,
+      gesture: null as 'bite' | 'wrap' | null,
+      gestureTime: 0,
+      gestureDuration: 1,
+      gestureTarget: null as {x: number; y: number} | null,
+      stickX: 0,
+      stickY: 0,
+      gestureStickX: 0,
+      gestureStickY: 0,
       heading: new THREE.Vector3(0, -1, 0),
       // Which way she faces, as an angle in the web, turned by the shorter way round.
       yaw: -Math.PI / 2,
@@ -250,6 +251,8 @@ export function createWeaver(web: Web, golden = false) {
       across: new THREE.Vector3(),
       joints: Array.from({ length: 7 }, () => new THREE.Vector3()),
       basis: new THREE.Matrix4(),
+      tilt: new THREE.Matrix4(),
+      actionFoot: new THREE.Vector3(),
       q: new THREE.Quaternion(),
       m: new THREE.Matrix4(),
       s: new THREE.Vector3(),
@@ -258,63 +261,29 @@ export function createWeaver(web: Web, golden = false) {
   };
 
   const node = (i: number, out: THREE.Vector3) => out.set(web.position[i * 3], web.position[i * 3 + 1], web.position[i * 3 + 2]);
-  function connected(a: number, b: number) {
-    return web.around[a].some(index => {
-      const edge = web.segments[index];
-      return edge.alive && (edge.a === b || edge.b === b);
-    });
-  }
-
   function hasGrip(n: number) {
     return n >= 0 && web.around[n].some(index => web.segments[index].alive);
   }
 
-  function moving() {
-    return state.leg + 1 < state.route.length;
-  }
-
-  function currentNode() {
-    return state.route[state.leg + (moving() && state.u >= 0.5 ? 1 : 0)];
-  }
-
-  function stopAt(n: number) {
-    state.route = [n];
-    state.leg = 0;
-    state.u = 0;
-  }
-
-  function repairRoute() {
+  function drive(x: number, y: number) {
     const s = state;
-    if (!moving() || connected(s.route[s.leg], s.route[s.leg + 1])) return;
-    const destination = s.route[s.route.length - 1];
-    const nearest = currentNode();
-    stopAt(nearest);
-    const alternate = web.path(nearest, destination);
-    if (alternate.length) s.route = alternate;
-  }
-
-  function goTo(destination: number) {
-    if (!Number.isInteger(destination) || destination < 0 || destination >= web.count) return false;
-    repairRoute();
-    const s = state;
-    const from = s.route[s.leg];
-    const next = moving() ? s.route[s.leg + 1] : from;
-    const tail = web.path(next, destination);
-    if (!tail.length) return false;
-    // A player may change direction while a foot is still on the current thread.
-    if (moving() && tail[1] === from) {
-      s.route = tail;
-      s.u = 1 - s.u;
-    } else if (moving()) {
-      s.route = [from, ...tail];
-    } else {
-      s.route = tail;
-      s.u = 0;
+    s.stickX = x;
+    s.stickY = y;
+    if (Math.hypot(x, y) > 0.025 &&
+        Math.hypot(x - s.gestureStickX, y - s.gestureStickY) > 0.08) {
+      s.gestureTarget = null;
     }
-    s.leg = 0;
-    s.frozen = 0;
-    s.dash = 0.35;
-    return true;
+    steering.drive(x, y);
+  }
+
+  function action(kind: 'bite' | 'wrap', duration = kind === 'bite' ? 0.32 : 0.95,
+    target?: {x: number; y: number}) {
+    state.gesture = kind;
+    state.gestureTime = 0;
+    state.gestureDuration = Math.max(0.08, duration);
+    state.gestureTarget = target ?? null;
+    state.gestureStickX = state.stickX;
+    state.gestureStickY = state.stickY;
   }
 
   // The thread point nearest a place, within a reach, for a foot to take hold of.
@@ -340,85 +309,23 @@ export function createWeaver(web: Web, golden = false) {
     const s = state;
     s.time += delta;
     const { a, b, d, right, up, want, hip, across, joints, basis, q, m } = s3;
-    const top = golden ? 0.55 : 0.75;
-    const turn = (toward: number, rate: number) => {
-      const by = Math.atan2(Math.sin(toward - s.yaw), Math.cos(toward - s.yaw));
-      s.yaw += by * (1 - Math.exp(-delta * rate));
-      s.heading.set(Math.cos(s.yaw), Math.sin(s.yaw), 0);
-    };
+    const top = golden ? 0.88 : 1.05;
+    steering.step(delta, top);
+    s.speed = steering.speed;
+    const target = s.gesture ? s.gestureTarget : null;
+    const toward = target && Math.hypot(target.x - s.at.x, target.y - s.at.y) > .002
+      ? Math.atan2(target.y - s.at.y, target.x - s.at.x)
+      : Math.atan2(steering.bearing.y, steering.bearing.x);
+    const by = Math.atan2(Math.sin(toward - s.yaw), Math.cos(toward - s.yaw));
+    s.yaw += by * (1 - Math.exp(-delta * (target ? 40 : 26)));
+    s.heading.set(Math.cos(s.yaw), Math.sin(s.yaw), 0);
 
-    repairRoute();
-    // Keep the short stop-and-go accelerations of a real orb-weaver.
-    let wanted = 0;
-    if (moving()) {
-      if (s.frozen > 0) s.frozen -= delta;
-      else {
-        s.dash -= delta;
-        if (s.dash <= 0) {
-          s.frozen = 0.08 + Math.random() * 0.22;
-          s.dash = 0.25 + Math.random() * 0.45;
-        }
-        wanted = top;
-        const left = s.route.length - 1 - s.leg - s.u;
-        if (left < 3) wanted *= 0.35 + left * 0.2;
-      }
-    }
-    s.speed += (wanted - s.speed) * (1 - Math.exp(-delta * (wanted > s.speed ? 14 : 22)));
-
-    if (moving()) {
-      // Consume distance rather than a count of edges; player-spun silk can be much
-      // longer than the small ring segments around the hub.
-      let distance = s.speed * delta;
-      while (distance > 0 && moving()) {
-        repairRoute();
-        if (!moving()) break;
-        node(s.route[s.leg], a);
-        node(s.route[s.leg + 1], b);
-        const edgeLength = Math.max(1e-5, a.distanceTo(b));
-        const remaining = edgeLength * (1 - s.u);
-        if (distance < remaining) {
-          s.u += distance / edgeLength;
-          break;
-        }
-        distance -= remaining;
-        s.u = 0;
-        s.leg++;
-      }
-      node(s.route[s.leg], a);
-      if (moving()) {
-        node(s.route[s.leg + 1], b);
-        a.lerp(b, s.u);
-      } else {
-        stopAt(s.route[s.leg]);
-      }
-      d.copy(s.at);
-      s.at.lerp(a, 1 - Math.exp(-delta * 20));
-      d.subVectors(s.at, d).setZ(0);
-      if (d.lengthSq() > 1e-12) turn(Math.atan2(d.y, d.x), 7);
-    } else {
-      const rest = currentNode();
-      node(rest, a);
-      if (!s.started) s.at.copy(a);
-      s.at.lerp(a, 1 - Math.exp(-delta * 18));
-      if (rest === web.hub) {
-        turn(-Math.PI / 2, 2);
-        // Now and then she feels the web: a foreleg lifts and pulls on its thread, and the web shivers with it.
-        s.tug -= delta;
-        if (s.tug <= 0) {
-          s.tug = 2.5 + Math.random() * 5;
-          const leg = s.legs.find((l) => l.k === (Math.random() < 0.6 ? 0 : 1) && l.side === (Math.random() < 0.5 ? -1 : 1));
-          if (leg && leg.swing < 0 && leg.node >= 0) {
-            leg.from.copy(leg.foot);
-            leg.toNode = leg.node;
-            leg.swing = 0;
-            leg.swingFor = 0.18;
-            leg.low = true;
-            web.previous[leg.node * 3 + 2] -= 0.004;
-            web.previous[leg.node * 3 + 1] += 0.002;
-          }
-        }
-      }
-    }
+    s.gestureTime += delta;
+    const phase = Math.min(1, s.gestureTime / s.gestureDuration);
+    if (phase >= 1) s.gesture = null;
+    const bite = s.gesture === 'bite' ? Math.sin(Math.PI * Math.sqrt(phase)) : 0;
+    const wrap = s.gesture === 'wrap' ? Math.min(1, phase * 9, (1 - phase) * 7) : 0;
+    const lunge = body * bite * 0.65;
 
     // The body's frame on the web: back toward the eye, riding a little above the threads, lower as it runs.
     up.copy(s3.z);
@@ -428,7 +335,9 @@ export function createWeaver(web: Web, golden = false) {
     s.dip += (lifted / 4 - s.dip) * (1 - Math.exp(-delta * 25));
     const lift = body * (0.32 - Math.min(1, s.speed / top) * 0.08 - s.dip * 0.035);
     basis.makeBasis(right, s.heading, up);
-    basis.setPosition(s.at.x, s.at.y, s.at.z + lift);
+    basis.multiply(s3.tilt.makeRotationX(-bite * 0.28 + wrap * 0.12));
+    basis.setPosition(s.at.x + s.heading.x * lunge, s.at.y + s.heading.y * lunge,
+      s.at.z + lift - bite * body * 0.08);
     parts.group.matrixAutoUpdate = false;
     parts.group.matrix.copy(basis);
     parts.group.matrixWorldNeedsUpdate = true;
@@ -511,8 +420,20 @@ export function createWeaver(web: Web, golden = false) {
       // The joints, solved in the plane through hip, foot and the body's up: the coxa out, the femur up to a high
       // knee, the patella and tibia down, the metatarsus and tarsus steeply to the foot. Lengths never change: a foot
       // out of reach straightens the leg toward it rather than stretching it.
+      // The back six feet keep their planted targets. The forelegs reach
+      // around the prey on alternate sides while winding silk.
+      const foot = s3.actionFoot.copy(leg.foot);
+      if (leg.k === 0 && (wrap > 0 || bite > 0)) {
+        const turn = phase * Math.PI * 5 + (leg.side > 0 ? Math.PI : 0);
+        const sweep = Math.cos(turn);
+        want.copy(s.at)
+          .addScaledVector(s.heading, length * (0.65 + wrap * 0.12 * Math.sin(turn)))
+          .addScaledVector(right, length * leg.side * (0.12 + wrap * 0.20 * sweep))
+          .addScaledVector(up, length * (0.09 + wrap * 0.13 * (1 + Math.sin(turn))));
+        foot.lerp(want, Math.max(wrap, bite));
+      }
       const L = SEGMENTS.map((f) => f * length);
-      across.subVectors(leg.foot, hip);
+      across.subVectors(foot, hip);
       const rise = across.dot(up);
       across.addScaledVector(up, -rise);
       const out = Math.max(1e-6, across.length());
@@ -599,11 +520,11 @@ export function createWeaver(web: Web, golden = false) {
   }
 
   function reset(n = web.hub) {
-    stopAt(n);
-    node(n, state.at);
+    steering.reset(n);
     state.time = 0;
-    state.speed = state.dip = state.frozen = state.dash = 0;
-    state.tug = 2;
+    state.speed = state.dip = 0;
+    state.gesture = state.gestureTarget = null;
+    state.stickX = state.stickY = 0;
     state.started = false;
     state.yaw = -Math.PI / 2;
     state.heading.set(0, -1, 0);
@@ -619,10 +540,13 @@ export function createWeaver(web: Web, golden = false) {
   object.add(parts.group, parts.segments, parts.joints, parts.spines);
   reset();
   return {
-    object, step, goTo, reset,
+    object, step, action, reset, drive,
+    preferEdge: (index: number) => steering.preferEdge(index),
+    heading: state.heading,
     position: state.at,
-    get currentNode() { return currentNode(); },
-    get moving() { return moving(); },
+    get currentNode() { return steering.currentNode; },
+    get currentEdge() { return steering.currentEdge; },
+    get moving() { return steering.speed > 1e-5; },
     get ready() { return state.started; },
     dispose() {
       for (const geometry of new Set(parts.geometries)) geometry.dispose();

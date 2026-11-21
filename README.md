@@ -4,9 +4,13 @@ A touch-controlled Three.js game about a garden orb-weaver. A moth repeatedly fl
 
 ## Playing
 
-Drag between two golden knots to cast a strand. The spider reaches the first knot, lays a line across the opening and runs along it. The length of the strand determines its silk cost. Cross it with a second strand to bind the two together and give the trap more time under load. A line outside the moth’s flight path misses. Drag a cast line in reverse to send the spider to its end and reel it back in. Intact silk returns 90% of its length to the reserve, while torn sections are lost.
+The left thumbstick controls the spider directly. Push gently to creep, push farther to run and release to stop on the moving strand. Steer into a branch at a junction or reverse mid-stride. Drag a thread to pluck it or drag open space to turn the camera.
 
-When a moth strikes, tap it to crawl to the impact. Reaching it wraps the catch. If it struggles free, the strand tears and the moth returns through the same opening. You can also tap other threads to crawl, pull a strand and release it to shake the dew loose, or drag empty space to turn the view.
+- **Silk** casts from the spider’s current junction. A quick press aims across the gap. Hold the button, aim with the left stick, then release to choose another knot. Cross two strands to reinforce a trap. From the opposite end, aim back along a strand to reel it in.
+- **Bite** lunges with the fangs. The button lights up when a flying or trapped moth is within reach. A successful bite triggers a final wingbeat and collapse.
+- **Wrap** winds silk around subdued prey if you are close enough. Stay beside it to finish. If you move away, the existing winding stays in place and you can return and resume.
+
+On a keyboard use WASD or the arrow keys to steer, Q for Silk, J to bite, K to wrap and Escape to pause.
 
 ## Running the game
 

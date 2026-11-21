@@ -54,6 +54,7 @@ export class Web {
     rest: number;
     kind: Kind;
     alive: boolean;
+    binding?: boolean;
   }[] = [];
   // For each point, the threads that meet there, for the spider to find its way.
   around: number[][] = [];

@@ -6,7 +6,7 @@ const height = 0.146;
 
 // A paired set of fore- and hindwings. Draw one scale pattern, then mirror it
 // about the thorax so the ocelli and transverse bands match on both sides.
-function wingTexture() {
+function wingTexture(front: boolean) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 512;
   const c = canvas.getContext('2d')!;
@@ -91,40 +91,87 @@ function wingTexture() {
     }
     c.restore();
   }
-  paintWing(hind, false);
-  paintWing(fore, true);
+  paintWing(front ? fore : hind, front);
   const texture = new T.CanvasTexture(canvas);
   texture.colorSpace = T.SRGBColorSpace;
   texture.anisotropy = 4;
   return texture;
 }
 
+export type MothPhase = 'flying' | 'trapped' | 'dying' | 'dead' | 'wrapping' | 'wrapped';
+
+const clamp = (n: number) => Math.max(0, Math.min(1, n));
+const ease = (n: number) => T.MathUtils.smoothstep(n, 0, 1);
+
+// The package tapers past the head and folded wing tips. Each turn of yarn is
+// indexed in winding order, so drawing a prefix lays down one continuous strand.
+function winding(turns: number, reverse: boolean) {
+  const positions: number[] = [], colors: number[] = [], indices: number[] = [];
+  const count = turns * 30;
+  const base = new T.Color(reverse ? '#f9eacb' : '#e3d5bb');
+  for (let i = 0; i <= count; i++) {
+    const t = i / count;
+    const lat = -.5 * Math.PI + (reverse ? 1 - t : t) * Math.PI;
+    const angle = t * turns * Math.PI * 2 + (reverse ? 1.5 : 0);
+    const wobble = Math.sin(angle * 2 + t * 7) * .018;
+    // A broad underlying ribbon closes the envelope, with a narrower,
+    // counter-wound reinforcement passing back over its surface.
+    const halfWidth = (reverse ? .19 : .55) * Math.PI / turns;
+    for (let j = 0; j < 3; j++) {
+      const band = T.MathUtils.clamp(lat + wobble + (j - 1) * halfWidth, -Math.PI / 2, Math.PI / 2);
+      const r = Math.cos(band) * (reverse ? 1.024 : 1) * (j === 1 ? 1.018 : 1);
+      const light = (j === 1 ? 1.05 : .72) + .04 * Math.sin(angle * 6 + lat);
+      positions.push(.043 * r * Math.cos(angle),
+        -.030 + .108 * Math.sin(band), .001 + .060 * r * Math.sin(angle));
+      colors.push(base.r * light, base.g * light, base.b * light);
+    }
+    if (i < count) {
+      const a = i * 3;
+      indices.push(a, a + 3, a + 1, a + 1, a + 3, a + 4,
+                   a + 1, a + 4, a + 2, a + 2, a + 4, a + 5);
+    }
+  }
+  const geometry = new T.BufferGeometry();
+  geometry.setAttribute('position', new T.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new T.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.setDrawRange(0, 0);
+  return geometry;
+}
+
 export function createMoth() {
   const object = new T.Group();
   const insect = new T.Group();
   object.add(insect);
-  const texture = wingTexture();
-  const wingMaterial = new T.MeshStandardMaterial({
-    map: texture, alphaTest: .32, side: T.DoubleSide, roughness: .84,
-    emissive: 0xffda9a, emissiveMap: texture, emissiveIntensity: .22,
-  });
-  const wing = new T.PlaneGeometry(span, height, 10, 10);
+  const textures = [wingTexture(false), wingTexture(true)];
+  const wingMaterials = textures.map(map => new T.MeshStandardMaterial({
+    map, alphaTest: .32, side: T.DoubleSide, roughness: .84,
+    emissive: 0xffda9a, emissiveMap: map, emissiveIntensity: .22,
+  }));
+  const wing = new T.PlaneGeometry(span, height, 12, 10);
   wing.translate(span / 2, -.005, 0);
   const pos = wing.getAttribute('position');
+  const curved = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
-    const u = pos.getX(i) / span;
-    const v = pos.getY(i) / height + .5;
-    pos.setZ(i, .008 * Math.sin(u * Math.PI) + .003 * Math.cos(v * 5) * u);
+    const x = pos.getX(i), y = pos.getY(i), u = x / span;
+    const v = y / height + .5;
+    const camber = .008 * Math.sin(u * Math.PI) + .003 * Math.cos(v * 5) * u;
+    pos.setZ(i, camber);
+    // Bend only the outer portion; the root stays bolted to the thorax.
+    // A delayed change of curvature lets the tip lag the power stroke.
+    const flex = Math.max(0, u - .32);
+    curved.set([x - .021 * flex * flex, y - .009 * flex * flex, camber + .085 * flex * flex], i * 3);
   }
   wing.computeVertexNormals();
-  const wings = [-1, 1].map(side => {
-    const half = new T.Mesh(wing, wingMaterial);
-    half.scale.x = side;
-    half.position.set(side * .002, .008, 0);
-    insect.add(half);
-    return half;
-  });
-
+  wing.morphAttributes.position = [new T.BufferAttribute(curved, 3)];
+  const wings = [-1, 1].flatMap(side => [false, true].map(front => {
+    const mesh = new T.Mesh(wing, wingMaterials[front ? 1 : 0]);
+    mesh.scale.x = side;
+    mesh.position.set(side * .002, front ? .011 : .005, front ? .0035 : 0);
+    insect.add(mesh);
+    return {mesh, front, side};
+  }));
   const parts: T.BufferGeometry[] = [];
   function bodyPart(x: number, y: number, z: number, rx: number, ry: number,
                     rz: number, base: string, bands = false) {
@@ -168,50 +215,84 @@ export function createMoth() {
   const lineMaterial = new T.LineBasicMaterial({color: '#e2c58f'});
   insect.add(new T.LineSegments(antennae, lineMaterial));
 
+  const silkMaterial = new T.MeshStandardMaterial({
+    vertexColors: true, side: T.DoubleSide, roughness: .8,
+    emissive: 0xd9cbb1, emissiveIntensity: .1
+  });
+  const firstCoil = winding(17, false), crossCoil = winding(11, true);
   const cocoon = new T.Group();
+  cocoon.add(new T.Mesh(firstCoil, silkMaterial), new T.Mesh(crossCoil, silkMaterial));
   object.add(cocoon);
-  const cocoonGeometry = new T.SphereGeometry(1, 24, 20);
-  cocoonGeometry.scale(.026, .064, .021);
-  const cocoonMaterial = new T.MeshStandardMaterial({color: '#d8ccb2', roughness: .86});
-  cocoon.add(new T.Mesh(cocoonGeometry, cocoonMaterial));
-  const threads: number[] = [];
-  for (let i = 0; i < 20; i++) {
-    let last: T.Vector3 | undefined;
-    for (let j = 0; j <= 64; j++) {
-      const phi = j / 64 * Math.PI * 2;
-      const angle = (i * 2.4) + phi;
-      const latitude = Math.max(-1.45, Math.min(1.45, (i / 19 - .5) * 2.45 + .29 * Math.sin(phi)));
-      const r = 1.015 * Math.cos(latitude);
-      const p = new T.Vector3(.026 * r * Math.cos(angle), .064 * Math.sin(latitude), .021 * r * Math.sin(angle));
-      if(last) threads.push(...last.toArray(),...p.toArray());
-      last = p;
-    }
-  }
-  const threadGeometry = new T.BufferGeometry();
-  threadGeometry.setAttribute('position', new T.Float32BufferAttribute(threads,3));
-  const silkMaterial = new T.LineBasicMaterial({color:'#fff3d7', transparent:true, opacity:.68});
-  cocoon.add(new T.LineSegments(threadGeometry, silkMaterial));
   cocoon.visible = false;
-  let wrappedAt: number | null = null;
-  function update(time: number, trapped = false, caught = false) {
-    wrappedAt = caught ? (wrappedAt ?? time) : null;
-    const progress = wrappedAt === null ? 0 : T.MathUtils.clamp((time - wrappedAt) / .52, 0, 1);
-    const struggle = .3 + .7 * Math.pow(Math.max(0, Math.sin(time*5.8)), 2);
-    const roll = trapped ? Math.sin(time*27) * .11 * struggle : Math.sin(time*8) * .10;
-    insect.rotation.z = roll * (1-progress);
-    wings.forEach((w, i) => {
-      const side = i?1:-1;
-      const angle = trapped ? .21 + struggle*(.46 + .38*Math.sin(time*41+i*.4))
-                            : .43 + .67*Math.sin(time*24 + .12*Math.sin(time*4));
-      w.rotation.y = -side * T.MathUtils.lerp(angle, 1.43, progress);
-    });
-    insect.visible = progress < 1;
-    cocoon.visible = progress > 0;
-    cocoon.scale.setScalar(progress);
+  let previousPhase: MothPhase = 'flying';
+  const startPoses = wings.map(() => new T.Vector3());
+
+  function update(time: number, phase: MothPhase, phaseAge: number, wrapProgress: number, bank = 0) {
+    if (phase !== previousPhase) {
+      wings.forEach(({mesh}, i) => {
+        startPoses[i].set(mesh.rotation.y, mesh.rotation.z, mesh.morphTargetInfluences![0]);
+      });
+      previousPhase = phase;
+    }
+    const age = Math.max(0, phaseAge);
+    const amount = phase === 'wrapped' ? 1 : clamp(wrapProgress);
+    const struggling = Math.pow(Math.max(0, Math.sin(age * 5.8 + .7)), 2);
+    const finalBeat = Math.exp(-age * 4.2) * Math.sin(age * 19);
+    const folding = ease(amount / .40);
+
+    for (let i = 0; i < wings.length; i++) {
+      const {mesh, side, front} = wings[i];
+      const beat = 23 * time - (front ? 0 : .65);
+      let flap: number, sweep: number, bend: number;
+      if (phase === 'flying') {
+        flap = .28 + (front ? .90 : .67) * Math.sin(beat) + side * bank * .24;
+        sweep = (front ? -.02 : -.17) + .12 * Math.cos(beat);
+        bend = .5 + .46 * Math.cos(beat - .45);
+      } else if (phase === 'trapped') {
+        const stroke = age * 30 + side * .8 - (front ? 0 : .7);
+        // One forewing is stuck fast; its opposite pair beats against the silk.
+        const free = side < 0 ? 1 : front ? .18 : .42;
+        flap = .16 + free * (.27 + struggling * (.58 + .53 * Math.sin(stroke)));
+        sweep = -.26 + free * (.1 + .23 * Math.cos(stroke)) * struggling;
+        bend = .19 + free * struggling * (.4 + .35 * Math.cos(stroke));
+      } else {
+        // A limp, uneven splay distinguishes the dead moth from one at rest.
+        const slack = side < 0 ? (front ? -.13 : -.19) : (front ? .27 : .08);
+        const droop = front ? (side < 0 ? -.88 : -.55) : (side < 0 ? -.53 : -.62);
+        flap = T.MathUtils.lerp(slack, front ? .98 : .83, folding);
+        sweep = T.MathUtils.lerp(droop, front ? -2.03 : -1.35, folding);
+        bend = T.MathUtils.lerp(.1, front ? .42 : .22, folding);
+        if (phase === 'dying') {
+          flap += finalBeat * (front ? 1.01 : .58);
+          sweep += .29 * finalBeat;
+          bend += .52 * Math.abs(finalBeat);
+        }
+      }
+      const blend = ease(age / .18);
+      mesh.rotation.y = T.MathUtils.lerp(startPoses[i].x, -side * flap, blend);
+      mesh.rotation.z = T.MathUtils.lerp(startPoses[i].y, side * sweep, blend);
+      mesh.morphTargetInfluences![0] = T.MathUtils.lerp(startPoses[i].z, bend, blend);
+    }
+    if (phase === 'flying') {
+      insect.rotation.set(.06 * Math.sin(time * 9), bank * .68, .055 * Math.sin(time * 9));
+    } else if (phase === 'trapped') {
+      insect.rotation.set(.13 * struggling, .07, .15 * Math.sin(age * 24) * struggling);
+    } else {
+      insect.rotation.set(.06 * (1 - folding), .1 * (1 - folding), .17 * (1 - folding) + .22 * finalBeat * Number(phase === 'dying'));
+    }
+    // The first course travels tail-to-head. The return course visibly crosses
+    // it in the other direction. The case stays full size throughout winding.
+    const cover = clamp((amount - .12) / .68);
+    const reinforce = clamp((amount - .80) / .20);
+    firstCoil.setDrawRange(0, Math.floor(firstCoil.index!.count / 12 * cover) * 12);
+    crossCoil.setDrawRange(0, Math.floor(crossCoil.index!.count / 12 * reinforce) * 12);
+    cocoon.visible = cover > 0;
+    insect.visible = cover < 1;
   }
+
   function dispose() {
-    for (const resource of [texture, wing, wingMaterial, body, bodyMaterial, antennae, lineMaterial,
-      threadGeometry, silkMaterial, cocoonGeometry, cocoonMaterial]) resource.dispose();
+    for (const resource of [...textures, ...wingMaterials, wing, body, bodyMaterial,
+      antennae, lineMaterial, firstCoil, crossCoil, silkMaterial]) resource.dispose();
   }
   return {object, update, dispose};
 }
