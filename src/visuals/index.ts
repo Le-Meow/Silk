@@ -36,5 +36,5 @@ export function createVisuals(web: Web, camera: THREE.PerspectiveCamera) {
     Object.values(garden.scans).forEach(texture => texture.dispose());
   }
   update(0, Math.max(window.innerHeight, 1));
-  return {object, drops, update, dispose};
+  return {object, drops, update, dispose, threadDew: dew.threadDew, removeThreadDew: dew.removeThreadDew};
 }

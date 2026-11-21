@@ -1,320 +1,292 @@
 import * as T from 'three/webgpu';
 import { Web } from './web';
+import { Trap } from './trap';
+import { Weaving, openFoundation, saveKey, type KnotChoice } from './weaving';
+import { createWeaver } from './weaver';
 import { createVisuals } from './visuals';
 import { createLens } from './visuals/lens';
 import { LOOKS } from './visuals/versions';
-import { createWeaver } from './weaver';
-import { createMoth } from './moth';
-import { directions, openGap, silkBudget, Trap } from './trap';
-import { Prey, type PreyEvent } from './prey';
 import { setupControls } from './controls';
+import { createChimes } from './chimes';
 import './style.css';
 
-const get = <E extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as E;
-const canvas=get<HTMLCanvasElement>('scene'), begin=get<HTMLButtonElement>('begin');
+const el = <E extends HTMLElement=HTMLElement>(id:string) => document.getElementById(id) as E;
+const canvas=el<HTMLCanvasElement>('scene'), begin=el<HTMLButtonElement>('begin'), game=el('game');
+const marks=el('marks'), guide=el('guide'), menu=el('menu');
+const undoButton=el<HTMLButtonElement>('undo'), next=el<HTMLButtonElement>('next'), weave=el<HTMLButtonElement>('silk');
 const direct=/\/play(?:\.html)?\/?$/.test(location.pathname);
-const guide=get('guide'), marks=get('marks'), menu=get('menu'), hud=get('hud');
-const pad=get('controller'), playerMark=get('player-marker');
-const preyMark=document.querySelector<HTMLElement>('.prey-target')!;
-type Stage='intro'|'play'|'won'|'lost';
 
-async function boot(){
-  const renderer=new T.WebGPURenderer({canvas,antialias:true,alpha:false});
-  await renderer.init();
-  renderer.setPixelRatio(Math.min(devicePixelRatio,1.55));
+async function boot() {
+  const renderer=new T.WebGPURenderer({canvas,antialias:true});
+  await renderer.init();renderer.setPixelRatio(Math.min(devicePixelRatio,1.55));
   renderer.toneMapping=T.NeutralToneMapping;renderer.toneMappingExposure=1.05;
   const scene=new T.Scene(), camera=new T.PerspectiveCamera(38,1,.035,150);
-  const web=new Web(LOOKS.dawn,17,.94), knots=openGap(web), trap=new Trap(web);
-  const visuals=createVisuals(web,camera), weaver=createWeaver(web), moth=createMoth();
-  let prey=new Prey(trap,knots);
-  scene.add(visuals.object,weaver.object,moth.object);
-  scene.add(new T.HemisphereLight(0xffe4b7,0x594a36,1.58));
-  const key=new T.DirectionalLight(0xffe0aa,2.5);key.position.set(2,4,2);scene.add(key);
-  const lens=createLens(renderer,scene,camera);
-  let stage:Stage='intro', paused=false, clock=0, silk=silkBudget;
-  let yaw=.23, pitch=-.08, zoom=1, nextBite=0;
-  let aim:{origin:number;target:number}|null=null;
-  let shot:{origin:number;target:number;at:number}|null=null;
-  const focus=new T.Vector3(.27,-.13,.02), point=new T.Vector3(), ray=new T.Raycaster();
-  const direction=new T.Vector3(), cursor=new T.Vector3(), plane=new T.Plane(new T.Vector3(0,0,1));
-  const markers=directions.map(name=>{
-    const el=document.createElement('span');el.className='knot';el.dataset.knot=name;marks.append(el);return el;
-  });
-  const lineGeo=new T.BufferGeometry().setFromPoints([new T.Vector3(),new T.Vector3()]);
-  const line=new T.Line(lineGeo,new T.LineBasicMaterial({color:0xffebac,depthTest:false,transparent:true,opacity:.85}));
-  line.frustumCulled=false;line.visible=false;line.renderOrder=15;scene.add(line);
+  const web=new Web({...LOOKS.dawn,spokes:12,turns:14},17,1);
+  const anchors=openFoundation(web), book=new Weaving(anchors), threads=new Trap(web);
+  const visuals=createVisuals(web,camera), spider=createWeaver(web), lens=createLens(renderer,scene,camera);
+  scene.add(visuals.object,spider.object,new T.HemisphereLight(0xffe4b7,0x594a36,1.58));
+  const sun=new T.DirectionalLight(0xffe0aa,2.5);sun.position.set(2,4,2);scene.add(sun);
+  const chimes=createChimes(), sound=el<HTMLButtonElement>('sound');
+  const soundLabel=()=>{sound.textContent=chimes.muted?'Sound off':'Sound on';sound.setAttribute('aria-pressed',String(!chimes.muted));};
+  sound.onclick=()=>{chimes.toggle();soundLabel();chimes.play(1);};soundLabel();
 
-  function cameraPose(){
-    const span=Math.max(2.28,1.92/camera.aspect),dist=span/(2*Math.tan(T.MathUtils.degToRad(19)))/zoom;
+  let playing=false, paused=false, aiming=false, choice=0, elapsed=0, yaw=.13,pitch=-.055;
+  let choices:KnotChoice[]=[], buttons:HTMLButtonElement[]=[];
+  type Thread=ReturnType<Trap['spin']>;
+  let job: { from:number; to:number; thread?:Thread; loop:number[] } | null=null;
+  let glint: { nodes:number[]; age:number } | null=null;
+  const point=new T.Vector3(), other=new T.Vector3(), direction=new T.Vector3(),ray=new T.Raycaster();
+  const plane=new T.Plane(new T.Vector3(0,0,1)),focus=new T.Vector3(0,.04,0);
+  const position=(id:number,out=new T.Vector3())=>threads.point(anchors[id],out);
+  function addThread(a:number,b:number) {
+    const thread=threads.spin(anchors[a],anchors[b]);
+    web.spiral.push(...thread.edges);
+    return thread;
+  }
+  const restored=new Weaving(anchors);
+  try {restored.restore(localStorage.getItem(saveKey));}catch{}
+  for(const [a,b] of restored.stitches){
+    const result=book.add(a,b)!;
+    visuals.threadDew(addThread(a,b).edges,!!result.loop.length,true);
+  }
+  book.current=restored.current;spider.reset(anchors[book.current]);
+  function save(){try{localStorage.setItem(saveKey,book.serialize());}catch{}}
+  function note(title:string,hint:string){el('event').textContent=title;el('hint').textContent=hint;}
+  function active(){return playing&&!paused;}
+  function size(){
+    const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;
+    renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();pose();
+  }
+  function pose(){
+    const span=Math.max(2.82,2.64/camera.aspect),dist=span/(2*Math.tan(T.MathUtils.degToRad(19)));
     camera.position.set(Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),Math.cos(yaw)*Math.cos(pitch)).multiplyScalar(dist).add(focus);
     camera.lookAt(focus);camera.updateMatrixWorld();
   }
-  function size(){
-    const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;
-    renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();cameraPose();
-  }
   function project(v:T.Vector3){
-    point.copy(v).project(camera);
-    return {x:(1+point.x)*canvas.clientWidth/2,y:(1-point.y)*canvas.clientHeight/2};
+    other.copy(v).project(camera);return {x:(1+other.x)*canvas.clientWidth*.5,y:(1-other.y)*canvas.clientHeight*.5};
   }
-  function place(el:HTMLElement,v:T.Vector3){
-    const {x,y}=project(v);el.style.left=x+'px';el.style.top=y+'px';
-  }
-  function setRay(x:number,y:number){
-    ray.setFromCamera(new T.Vector2(x/canvas.clientWidth*2-1,1-y/canvas.clientHeight*2),camera);
-  }
-  function stickDirection(){
-    const {x,y}=controls.axes, magnitude=Math.hypot(x,y);
-    if(!magnitude)return direction.set(0,0,0);
-    const p=project(weaver.position);
-    setRay(p.x+x*24,p.y-y*24);
-    plane.constant=-weaver.position.z;
+  function place(node:HTMLElement,p:{x:number;y:number}){node.style.left=p.x+'px';node.style.top=p.y+'px';}
+  function screenDir(){
+    const {x,y}=controls.axes, length=Math.hypot(x,y);
+    if(!length)return direction.set(0,0,0);
+    const p=project(spider.position);
+    ray.setFromCamera(new T.Vector2((p.x+x*22)*2/canvas.clientWidth-1,1-(p.y-y*22)*2/canvas.clientHeight),camera);
+    plane.constant=-spider.position.z;
     if(!ray.ray.intersectPlane(plane,direction))return direction.set(0,0,0);
-    return direction.sub(weaver.position).setZ(0).normalize().multiplyScalar(magnitude);
+    return direction.sub(spider.position).setZ(0).normalize().multiplyScalar(length);
   }
-  function drawLine(from:T.Vector3,to:T.Vector3){
-    const arr=lineGeo.getAttribute('position');
-    arr.setXYZ(0,from.x,from.y,from.z+.012);arr.setXYZ(1,to.x,to.y,to.z+.012);
-    arr.needsUpdate=true;line.visible=true;
+  function nearestOrigin(){
+    const here=spider.position;
+    const order=anchors.map((n,i)=>({i,d:threads.point(n,point).distanceToSquared(here)})).sort((a,b)=>a.d-b.d);
+    return order.find(o=>book.choices(o.i).length)?.i ?? book.current;
   }
-  function note(title:string,detail:string){
-    get('event').textContent=title;get('hint').textContent=detail;
+  function counts(){
+    el('strands').textContent=String(book.stitches.length);el('loops').textContent=String(book.loops);
+    el('strand-label').textContent=book.stitches.length===1?'strand':'strands';
+    el('loop-label').textContent=book.loops===1?'loop':'loops';
+    undoButton.disabled=!!job||!book.stitches.length;
   }
-  function reserve(){
-    const pct=Math.round(100*Math.max(0,silk)/silkBudget);
-    get('reserve').textContent=pct+'%';get<HTMLMeterElement>('meter').value=pct;
+  function select(i:number){
+    choice=i;buttons.forEach((button,j)=>button.classList.toggle('selected',i===j));
   }
-  const isPlaying=()=>stage==='play'&&!paused;
-  function controllerVisibility(){
-    const hidden=!isPlaying();
-    pad.hidden=playerMark.hidden=guide.hidden=marks.hidden=hidden;
-    preyMark.hidden=hidden||prey.phase==='flying';
+  function offer() {
+    buttons.forEach(b=>b.remove());
+    choices=book.choices();
+    if(!choices.length){book.current=nearestOrigin();choices=book.choices();}
+    buttons=choices.map(({to,loop},i)=>{
+      const b=document.createElement('button');b.type='button';b.className='knot';b.dataset.knot=String(to);
+      b.dataset.close=String(Boolean(loop.length));b.setAttribute('aria-label',loop.length?'Join this knot to close a loop':'Weave to knot '+(i+1));
+      b.onclick=()=>{if(active()&&!job){select(i);stitch();}};
+      marks.append(b);return b;
+    });
+    select(0);next.disabled=choices.length<2;weave.disabled=!choices.length;
+    if(!choices.length)note('A finished web','Pluck a thread to hear it ring, or undo a stitch to try a different pattern.');
+    counts();paintMarkers();
   }
-  function start(){
-    stage='play';prey=new Prey(trap,knots);
-    weaver.reset(knots[0]);prey.step(0,weaver.position,false);focus.set(.34,0,.02);cameraPose();
-    menu.hidden=true;hud.hidden=get('pause').hidden=false;controllerVisibility();reserve();
-    note('Set the trap','Press Silk to span the gap. Hold it and steer to aim at a different knot.');
+  function chooseDirection(){
+    const {x,y}=controls.axes;if(Math.hypot(x,y)<.18||!choices.length)return;
+    const at=project(position(book.current,point));
+    let best=-Infinity,which=choice;
+    choices.forEach(({to},i)=>{
+      const p=project(position(to,point)),dx=p.x-at.x,dy=at.y-p.y;
+      const score=(x*dx+y*dy)/Math.max(1,Math.hypot(dx,dy));
+      if(score>best){best=score;which=i;}
+    });
+    select(which);
   }
-  function finish(won:boolean){
-    stage=won?'won':'lost';controls.reset();weaver.drive(0,0);cancelGesture();controllerVisibility();
-    hud.hidden=get('pause').hidden=true;menu.hidden=false;
-    get('eyebrow').textContent=won?'The hunt is over':'The moth is gone';
-    get('title').textContent=won?'Wrapped.':'Slipped away.';
-    get('copy').textContent=won?'You bit the moth and bound it in silk on pass '+prey.pass+'.':'Watch the opening, cast across the flight path, and steer into bite range.';
-    begin.textContent='Spin a fresh web';
+  function paintMarkers(){
+    const preview=el('preview'), origin=el('origin');
+    preview.hidden=origin.hidden=!!job||!choices.length;
+    if(job||!choices.length)return;
+    const from=project(position(book.current,point));place(origin,from);
+    buttons.forEach((b,i)=>place(b,project(position(choices[i].to,point))));
+    const to=project(position(choices[choice].to,point)),dx=to.x-from.x,dy=to.y-from.y;
+    place(preview,from);preview.style.width=Math.hypot(dx,dy)+'px';preview.style.transform='rotate('+Math.atan2(dy,dx)+'rad)';
   }
-  function pause(){
-    if(stage!=='play')return;
-    paused=!paused;controls.reset();weaver.drive(0,0);cancelGesture();
-    menu.hidden=!paused;controllerVisibility();
-    get('pause').setAttribute('aria-label',paused?'Resume encounter':'Pause encounter');
-    if(paused){get('eyebrow').textContent='Encounter paused';get('title').textContent='At rest.';get('copy').textContent='Your web will wait.';begin.textContent='Resume';}
+  function stitch(){
+    if(!active()||job||!choices[choice])return;
+    chimes.unlock();aiming=false;
+    const from=book.current,to=choices[choice].to;
+    const route=web.path(spider.currentNode,anchors[from]);
+    if(!route.length||!spider.follow(route,1.35))return;
+    job={from,to,loop:[]};glint=null;el('glimmer').hidden=true;
+    buttons.forEach(b=>b.hidden=true);weave.disabled=next.disabled=true;counts();paintMarkers();
+    note('Laying silk','The spider draws a strand from knot to knot.');
   }
-  function activateMenu(){
-    if(paused)pause();
-    else if(stage==='intro')start();
-    else if(stage==='won'||stage==='lost')location.assign('./play.html');
-  }
-  begin.onclick=activateMenu;
-  begin.addEventListener('pointerup', e=>{
-    if(e.pointerType!=='touch'||!e.isPrimary||menu.hidden||begin.disabled)return;
-    const r=begin.getBoundingClientRect();
-    if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom)activateMenu();
-  });
-  get('pause').onclick=pause;
-
-  function chooseKnot(origin:number, dx:number,dy:number){
-    const from=project(trap.point(origin));
-    let best=-Infinity, result=-1;
-    for(const knot of knots){
-      if(knot===origin)continue;
-      const p=project(trap.point(knot)),x=p.x-from.x,y=from.y-p.y,length=Math.hypot(x,y);
-      if(length<8)continue;
-      const alignment=(dx*x+dy*y)/length;
-      if(alignment>best){best=alignment;result=knot;}
+  function advanceStitch(){
+    if(!job)return;
+    const {from,to,thread}=job;
+    if(!thread){
+      if(spider.following)return;
+      const result=book.add(from,to);
+      if(!result){job=null;offer();return;}
+      job.thread=addThread(from,to);job.loop=result.loop;
+      for(const e of job.thread.edges)web.segments[e].draw=0;
+      spider.follow(job.thread.nodes,.78);save();return;
     }
-    return result;
-  }
-  function updateAim(){
-    if(!aim)return;
-    const {x,y}=controls.axes;
-    if(Math.hypot(x,y)>.18)aim.target=chooseKnot(aim.origin,x,y);
-  }
-  function startAim(){
-    if(aim)return;
-    const origin=weaver.currentNode;
-    // A quick cast points across the clearing. Holding Silk switches the left stick to aiming.
-    const from=project(trap.point(origin)),center=new T.Vector3();
-    for(const knot of knots)center.add(trap.point(knot));
-    const gap=project(center.multiplyScalar(.25));
-    aim={origin,target:chooseKnot(origin,gap.x-from.x,from.y-gap.y)};
-    updateAim();weaver.drive(0,0);
-    note('Aim silk','Steer toward a gold knot. Release Silk to cast.');
-  }
-  function releaseSilk(canceled:boolean){
-    if(!aim)return;
-    updateAim();
-    const {origin,target}=aim;aim=null;line.visible=false;
-    if(canceled){
-      note('Cast canceled','Steer along the web or aim another strand.');
+    if(spider.following){
+      const edge=thread.edges.indexOf(spider.currentEdge);
+      let length=thread.nodes.indexOf(spider.currentNode);
+      if(edge>=0){
+        const seg=web.segments[thread.edges[edge]];
+        const start=threads.point(seg.a,point);
+        const axis=threads.point(seg.b,direction).sub(start);
+        length=edge+T.MathUtils.clamp(other.subVectors(spider.position,start).dot(axis)/Math.max(.000001,axis.lengthSq()),0,1);
+      }
+      for(let i=0;i<thread.edges.length;i++)web.segments[thread.edges[i]].draw=T.MathUtils.clamp(length-i,0,1);
       return;
     }
-    if(!isPlaying()||target<0)return;
-    const distance=trap.point(origin).distanceTo(trap.point(target));
-    const reverse=trap.threads.find(t=>t.a===target&&t.b===origin);
-    if(reverse){
-      if(prey.hit?.thread===reverse){note('Line under load','The moth is on this strand.');return;}
-      if(reverse.nodes.slice(1,-1).includes(weaver.currentNode)||reverse.edges.includes(weaver.currentEdge)){
-        note('Step onto the knot','Move off the span before reeling it in.');return;
+    for(const e of thread.edges)delete web.segments[e].draw;
+    const loop=job.loop;
+    threads.jolt(thread.nodes[Math.floor(thread.nodes.length/2)],loop.length ? .017 : .009);
+    visuals.threadDew(thread.edges,!!loop.length);chimes.play(to,!!loop.length);
+    if(loop.length){
+      const knots=[...loop,from], circuit=[anchors[from]];
+      for(let i=1;i<knots.length;i++){
+        const a=anchors[knots[i-1]], b=anchors[knots[i]];
+        const seam=threads.threads.find(t=>(t.a===a&&t.b===b)||(t.a===b&&t.b===a))!;
+        circuit.push(...(seam.a===a ? seam.nodes : [...seam.nodes].reverse()).slice(1));
       }
-      silk=Math.min(silkBudget,silk+trap.reel(reverse));reserve();note('Silk recovered','Aim at another knot to lay a new strand.');return;
-    }
-    if(trap.threads.some(t=>t.a===origin&&t.b===target&&trap.intact(t))){
-      note('Already spun','Steer along this strand, or aim at another knot.');return;
-    }
-    if(distance<.1||distance>silk+.025){note('Choose a closer knot','A shorter span uses less silk.');return;}
-    const thread=trap.spin(origin,target);
-    weaver.preferEdge(thread.edges[0]);trap.jolt(origin,.023);
-    shot={origin,target,at:clock};silk-=distance;reserve();
-    note(trap.braced(thread)?'Crossing braced':'Line set','Steer onto the strand. Press Bite when the moth is within reach.');
+      glint={nodes:circuit,age:0};
+      note('Loop closed','Dew is gathering on the seam. Choose where to grow next.');
+    }else if(book.stitches.length===1)note('Your first strand','Choose another dot. The pale green double ring will close a loop.');
+    else note('Strand tied','Choose the next knot or pluck the silk.');
+    spider.action('wrap',.29);job=null;offer();save();
   }
-  function press(action:'silk'|'bite'|'wrap'){
-    if(!isPlaying())return;
-    if(action==='silk'){startAim();return;}
-    if(action==='bite'){
-      if(clock<nextBite||prey.phase==='wrapping')return;
-      nextBite=clock+.44;
-      const hit=prey.bite(weaver.position,weaver.currentNode);
-      weaver.action('bite',.32,hit?prey.position:undefined);
-      if(hit){note('Bite landed','The moth is folding its wings. Stay close to wrap it.');navigator.vibrate?.(24);}
-      else if(prey.phase==='flying'||prey.phase==='trapped')note('Out of reach','Steer closer. Bite lights up when your fangs can reach the moth.');
-    }else if(prey.wrap(weaver.position)){
-      weaver.action('wrap',2.6*(1-prey.wrapProgress),prey.position);note('Winding silk','Stay beside the moth while your forelegs work.');
-    }else if(prey.phase!=='wrapping'){
-      note('Wrap',prey.phase==='dead'?'Move closer to the moth.':'Land a bite first, then wrap the still moth.');
-    }
+  function pluck(node=spider.currentNode){
+    if(!active())return;
+    chimes.unlock();threads.jolt(node,.041);chimes.play(node);
+    if(!job)note('Silk ringing','Choose a dot when you feel like weaving again.');
   }
-  const controls=setupControls({active:isPlaying,press,releaseSilk});
-  let gesture:null|{id:number;x:number;y:number;sx:number;sy:number;node:number;start:T.Vector3;dragged:boolean}=null;
-  function cancelGesture(){web.grabbed=-1;gesture=null;}
-  function coords(e:PointerEvent){const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
+  undoButton.onclick=()=>{
+    if(job||!book.stitches.length)return;
+    const thread=threads.threads[threads.threads.length-1];
+    const last=book.undo()!;
+    visuals.removeThreadDew(thread.edges);threads.undoLast();spider.reset(anchors[last[0]]);
+    glint=null;el('glimmer').hidden=true;chimes.unlock();chimes.play(last[0]);offer();save();
+    note('Stitch unwound','Choose another knot to try a different shape.');
+  };
+  const controls=setupControls({
+    active,
+    press(action){
+      chimes.unlock();
+      if(action==='pluck'){pluck();return;}
+      if(job||!choices.length)return;
+      if(action==='next'){select((choice+1)%choices.length);return;}
+      aiming=true;spider.drive(0,0);chooseDirection();
+    },
+    releaseSilk(canceled){
+      if(!aiming)return;
+      aiming=false;if(canceled)return;chooseDirection();stitch();
+    }
+  });
+  function visibility(){
+    menu.hidden=active();el('tools').hidden=!playing;
+    marks.hidden=guide.hidden=el('hud').hidden=el('controller').hidden=!active();
+    undoButton.disabled=paused||!!job||!book.stitches.length;
+  }
+  function start(){
+    playing=true;paused=false;visibility();offer();
+    if(book.stitches.length)note('Back at your web','Choose a dot to carry on where you left off.');
+    else note('Your first stitch','Tap the glowing dot or press Weave.');
+  }
+  function pause(){
+    if(!playing)return;
+    paused=!paused;aiming=false;controls.reset();spider.drive(0,0);visibility();
+    el('pause').setAttribute('aria-label',paused?'Resume game':'Pause game');
+    if(paused){el('title').textContent='A little rest';el('copy').textContent='Your web will be here when you return.';begin.textContent='Keep weaving';}
+  }
+  begin.onclick=()=>{chimes.unlock();if(playing)pause();else start();};el('pause').onclick=pause;
+  window.addEventListener('keydown',e=>{
+    if(e.repeat||e.metaKey||e.ctrlKey||e.altKey)return;
+    if(e.key==='Escape'&&playing){e.preventDefault();pause();}
+    if(e.key==='Enter'&&!menu.hidden&&!begin.disabled&&!(e.target instanceof HTMLButtonElement)){e.preventDefault();begin.click();}
+  });
+  document.addEventListener('visibilitychange',()=>{if(document.hidden&&active())pause();});
+  window.addEventListener('blur',()=>{aiming=false;controls.reset();spider.drive(0,0);});
+  let drag:{id:number;x:number;y:number;ox:number;oy:number;moved:boolean}|null=null;
   canvas.addEventListener('pointerdown',e=>{
-    if(gesture||paused||stage==='lost'||stage==='won')return;
-    const {x,y}=coords(e);setRay(x,y);
-    const {origin:o,direction:d}=ray.ray;
-    const node=web.pick(o.x,o.y,o.z,d.x,d.y,d.z,.018)?.node??-1;
-    gesture={id:e.pointerId,x,y,sx:x,sy:y,node,start:node<0?new T.Vector3():trap.point(node),dragged:false};
-    canvas.setPointerCapture(e.pointerId);
+    if(!active()||drag||e.button!==0)return;
+    chimes.unlock();drag={id:e.pointerId,x:e.clientX,y:e.clientY,ox:e.clientX,oy:e.clientY,moved:false};canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove',e=>{
-    const g=gesture;if(!g||g.id!==e.pointerId)return;
-    const {x,y}=coords(e);g.dragged ||= Math.hypot(x-g.sx,y-g.sy)>6;
-    if(g.dragged&&g.node>=0){
-      setRay(x,y);plane.constant=-g.start.z;
-      if(ray.ray.intersectPlane(plane,cursor)){
-        web.grabbed=g.node;cursor.z+=Math.min(.28,Math.hypot(x-g.sx,y-g.sy)/canvas.clientWidth*.7);cursor.toArray(web.target);
-      }
-    }else if(g.dragged){
-      yaw=T.MathUtils.clamp(yaw-(x-g.x)*.005,-.85,.85);pitch=T.MathUtils.clamp(pitch+(y-g.y)*.004,-.55,.55);cameraPose();
-    }
-    g.x=x;g.y=y;
+    if(!drag||drag.id!==e.pointerId)return;
+    drag.moved ||= Math.hypot(e.clientX-drag.ox,e.clientY-drag.oy)>6;
+    if(drag.moved){yaw=T.MathUtils.clamp(yaw-(e.clientX-drag.x)*.0035,-.68,.68);pitch=T.MathUtils.clamp(pitch+(e.clientY-drag.y)*.003,-.38,.38);pose();}
+    drag.x=e.clientX;drag.y=e.clientY;
   });
   canvas.addEventListener('pointerup',e=>{
-    const g=gesture;if(!g||g.id!==e.pointerId)return;
-    if(g.node>=0&&g.dragged)trap.jolt(g.node,.068);
-    cancelGesture();
+    if(!drag||drag.id!==e.pointerId)return;
+    if(!drag.moved){
+      const r=canvas.getBoundingClientRect();
+      ray.setFromCamera(new T.Vector2((e.clientX-r.left)*2/r.width-1,1-(e.clientY-r.top)*2/r.height),camera);
+      const o=ray.ray.origin,d=ray.ray.direction,hit=web.pick(o.x,o.y,o.z,d.x,d.y,d.z,.014);
+      if(hit)pluck(hit.node);
+    }
+    drag=null;
   });
-  canvas.addEventListener('pointercancel',cancelGesture);canvas.addEventListener('lostpointercapture',cancelGesture);
-  canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=T.MathUtils.clamp(zoom*Math.exp(-e.deltaY*.001),.75,1.7);cameraPose();},{passive:false});
-  document.addEventListener('visibilitychange',()=>{if(document.hidden&&isPlaying())pause();});
-  window.addEventListener('blur',()=>{controls.reset();weaver.drive(0,0);cancelGesture();});
-  window.addEventListener('keydown',e=>{
-    if(e.repeat||e.metaKey||e.altKey||e.ctrlKey)return;
-    if(e.key==='Escape'&&stage==='play'){e.preventDefault();pause();}
-    if(e.key==='Enter'&&!menu.hidden&&!begin.disabled){
-      // Focused buttons already support Enter through their native click event.
-      if(e.target instanceof HTMLButtonElement&&!e.target.closest('[hidden]'))return;
-      e.preventDefault();begin.click();
-    }
-  });
-
-  function event(result:PreyEvent){
-    if(result==='wrapped'){finish(true);return;}
-    if(result==='lost'){finish(false);return;}
-    if(result==='impact')note('Impact!','Steer toward the struggling moth. Press Bite when the button lights up.');
-    if(result==='dead')note('Prey subdued','Press Wrap beside the moth to wind the cocoon.');
-    if(result==='interrupted')note('Wrap paused','Come back into reach and press Wrap to finish the cocoon.');
-    if(result==='torn'||result==='miss'){
-      get('pass').textContent=prey.pass+' / 3';
-      note(result==='torn'?'The strand tore':'The moth slipped through','Cast across its flight path or reel a strand back from the far end.');
-    }
-  }
-  function physics(dt:number){
-    clock+=dt;
-    web.wind=1.45+1.4*Math.sin(clock*.76)+.65*Math.sin(clock*1.85);
-    web.step(dt,5);web.snapped.length=0;
-    if(isPlaying()&&!aim){const dir=stickDirection();weaver.drive(dir.x,dir.y);}
-    else weaver.drive(0,0);
-    weaver.step(dt);
-    if(aim)updateAim();
-    const result=prey.step(dt,weaver.position,stage==='play');
-    if(result)event(result);
-    moth.object.position.copy(prey.position);
-    moth.object.rotation.set(prey.pitch,0,prey.yaw,'ZXY');
-    moth.update(clock,prey.phase,prey.age,prey.wrapProgress,prey.bank);
-    visuals.update(dt,canvas.clientHeight);
-  }
-  function display(dt:number){
-    if(isPlaying()){
-      // Keep the spider inside a comfortable viewing area while retaining the opening in view.
-      const p=project(weaver.position);
-      if(p.x<canvas.clientWidth*.19||p.x>canvas.clientWidth*.81||p.y<canvas.clientHeight*.22||p.y>canvas.clientHeight*.68){
-        focus.x=T.MathUtils.damp(focus.x,weaver.position.x,4,dt);
-        focus.y=T.MathUtils.damp(focus.y,weaver.position.y,4,dt);cameraPose();
-      }
-      knots.forEach((n,i)=>{place(markers[i],trap.point(n));markers[i].classList.toggle('selected',aim?.target===n);});
-      place(playerMark,weaver.position);
-      preyMark.hidden=prey.phase==='flying';
-      if(!preyMark.hidden)place(preyMark,prey.position);
-      get('bite').classList.toggle('ready',prey.canBite(weaver.position)&&clock>=nextBite);
-      get('wrap').classList.toggle('ready',prey.canWrap(weaver.position)||prey.phase==='wrapping');
-      get('wrap').classList.toggle('dim',prey.phase!=='dead'&&prey.phase!=='wrapping');
-      get('wrap').style.setProperty('--wound',(prey.wrapProgress*360)+'deg');
-    }
-    line.visible=false;
-    if(aim&&aim.target>=0)drawLine(trap.point(aim.origin),trap.point(aim.target));
-    else if(shot&&clock-shot.at<.22){
-      const from=trap.point(shot.origin),to=trap.point(shot.target);
-      drawLine(from,to.lerp(from,1-Math.min(1,(clock-shot.at)/.15)));
-    }else if(prey.phase==='wrapping'){
-      const from=weaver.position.clone().addScaledVector(weaver.heading,-.045);from.z+=.036;
-      const angle=prey.wrapProgress*Math.PI*16,to=prey.position.clone();
-      to.x+=.027*Math.cos(angle);to.z+=.024*Math.sin(angle);drawLine(from,to);
-    }
-    get('game').dataset.prey=prey.phase;
-    lens.render(camera.position.distanceTo(focus));
-  }
+  canvas.addEventListener('lostpointercapture',()=>drag=null);
   let last=0;
   function frame(now:number){
-    const dt=Math.min(.09,Math.max(0,(now-(last||now))/1000));last=now;
-    if(!document.hidden&&!paused){
-      const steps=Math.max(1,Math.ceil(dt/(1/30)));
-      for(let i=0;i<steps;i++)physics(dt/steps);
-      display(dt);
+    const dt=Math.min(.09,(now-(last||now))/1000);last=now;
+    if(!paused&&!document.hidden){
+      const steps=Math.max(1,Math.ceil(dt*30)),h=dt/steps;
+      for(let i=0;i<steps;i++){
+        elapsed+=h;web.wind=.45+.29*Math.sin(elapsed*.72);web.step(h,6);
+        if(active()&&!job&&!aiming){const d=screenDir();spider.drive(d.x,d.y);}
+        else spider.drive(0,0);
+        spider.step(h);advanceStitch();
+      }
+      if(active()&&!job){
+        if(aiming)chooseDirection();
+        else if(spider.moving && (controls.axes.x||controls.axes.y)){
+          const from=nearestOrigin();
+          if(from!==book.current){book.current=from;offer();}
+        }
+        paintMarkers();
+      }
+      if(glint){
+        const spark=el('glimmer');glint.age+=dt;
+        const progress=glint.age/1.45*(glint.nodes.length-1),n=Math.floor(progress);
+        if(n>=glint.nodes.length-1){glint=null;spark.hidden=true;}
+        else{
+          threads.point(glint.nodes[n],point).lerp(threads.point(glint.nodes[n+1],direction),progress-n);
+          place(spark,project(point));spark.hidden=false;
+        }
+      }
+      visuals.update(dt,canvas.clientHeight);lens.render(camera.position.distanceTo(focus));
     }
     requestAnimationFrame(frame);
   }
   new ResizeObserver(size).observe(canvas);size();
-  if(direct)start();
-  await renderer.compileAsync(scene,camera);
-  begin.disabled=false;begin.textContent='Enter the clearing';
-  requestAnimationFrame(frame);
+  await renderer.compileAsync(scene,camera);begin.disabled=false;
+  begin.textContent=book.stitches.length?'Return to your web':'Start weaving';
+  if(direct)start();requestAnimationFrame(frame);
 }
 boot().catch(error=>{
-  console.error(error);menu.hidden=false;pad.hidden=guide.hidden=hud.hidden=marks.hidden=playerMark.hidden=preyMark.hidden=get('pause').hidden=true;
-  get('eyebrow').textContent='Garden unavailable';get('copy').textContent='The 3D scene could not start. Reload to try again.';
-  begin.textContent='Reload';begin.disabled=false;begin.onclick=()=>location.reload();
+  console.error(error);menu.hidden=false;el('title').textContent='The garden is resting';
+  el('copy').textContent='The 3D view could not start. Reload to try again.';
+  begin.disabled=false;begin.textContent='Reload';begin.onclick=()=>location.reload();
 });
 if(import.meta.env.PROD&&'serviceWorker' in navigator)
   window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.warn));

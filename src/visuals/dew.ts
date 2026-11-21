@@ -22,13 +22,17 @@ export type Drop = {
   wait: number;
 };
 
+function makeDrop(seg: number, t: number, r: number, grow: number): Drop {
+  return {seg, t, r, grow, falling: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, wait: 0};
+}
+
 // Strings a new web with its dew and weighs it down by it, ready to be settled under the weight before it is seen, so
 // nothing shifts and shakes the drops off. Done along with the web itself, in the background, ahead of being needed.
 export function bead(web: Web, look: Look, cap: number, seed: number) {
   const random = mulberry32(seed * 7 + 3);
   const list: Drop[] = [];
   const p = web.position;
-  const eligible = web.spiral.filter(i => web.segments[i].alive);
+  const eligible = web.spiral.filter(i => web.segments[i]?.alive);
   const lengths = eligible.map((s) => {
     const seg = web.segments[s];
     return Math.hypot(p[seg.b * 3] - p[seg.a * 3], p[seg.b * 3 + 1] - p[seg.a * 3 + 1]);
@@ -40,7 +44,7 @@ export function bead(web: Web, look: Look, cap: number, seed: number) {
     const k = Math.floor(random() * eligible.length);
     // Many small ones and a few big, as dew gathers.
     const r = small + (big - small) * random() ** 3;
-    list.push({ seg: eligible[k], t: 0.1 + random() * 0.8, r, grow: 1, falling: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, wait: 0 });
+    list.push(makeDrop(eligible[k], 0.1 + random() * 0.8, r, 1));
   }
   web.load.fill(0);
   for (const d of list) {
@@ -79,7 +83,10 @@ export function createDew(web: Web, drops: Drop[], look: Look, compact: boolean)
     rgb = rgb.add(sky.light.mul(sky.power).mul(focus.add(glance)));
     return vec4(rgb.add(vec3(1, 1, 1).mul(sky.flash.mul(0.5))), 1);
   })() as any;
-  const mesh = new THREE.InstancedMesh(geometry, material, drops.length);
+  // Keep the GPU allocation independent of how much dew the scaffold has at dawn.
+  const capacity = Math.max(drops.length, compact ? 1100 : 1800);
+  const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+  mesh.count = drops.length;
   mesh.frustumCulled = false;
   const scratch = {
     matrix: new THREE.Matrix4(),
@@ -88,6 +95,49 @@ export function createDew(web: Web, drops: Drop[], look: Look, compact: boolean)
     quiet: new THREE.Quaternion(),
     weighed: 0
   };
+  const random = mulberry32(730);
+  let replace = 0;
+  function threadDew(edges: number[], loop: boolean, immediate = false) {
+    // Sample intervals of silk length, so stitching the same curve with more
+    // solver points leaves its bead density and weight unchanged.
+    const strands = edges.filter(id => web.segments[id]?.alive && !web.segments[id].binding);
+    const lengths = strands.map(id => {
+      const {a, b} = web.segments[id];
+      const p = web.position;
+      return Math.hypot(p[3*a] - p[3*b], p[3*a+1] - p[3*b+1], p[3*a+2] - p[3*b+2]);
+    });
+    const total = lengths.reduce((sum, length) => sum + length, 0);
+    if (total < 1e-6) return;
+    const density = loop ? look.dew * 1.15 : look.dew * .55;
+    const count = Math.min(capacity, Math.max(1, Math.round(total * density)));
+    let edge = 0, start = 0;
+    for (let i = 0; i < count; i++) {
+      const distance = total * (i + .18 + random() * .64) / count;
+      while (edge < strands.length - 1 && start + lengths[edge] <= distance) {
+        start += lengths[edge++];
+      }
+      const t = Math.min(.98, Math.max(.02, (distance - start) / lengths[edge]));
+      const [small, big] = look.dropSize;
+      const radius = (small + (big - small) * random() ** 2.5) * (loop ? 1.12 : .91);
+      const drop = makeDrop(strands[edge], t, radius, immediate ? 1 : .35 + random() * .2);
+      if (drops.length < capacity) drops.push(drop);
+      else {
+        drops[replace] = drop;
+        replace = (replace + 1) % capacity;
+      }
+    }
+    scratch.weighed = 0;
+  }
+  function removeThreadDew(edges: number[]) {
+    const removed = new Set(edges);
+    let kept = 0;
+    for (const drop of drops) {
+      if (!removed.has(drop.seg)) drops[kept++] = drop;
+    }
+    drops.length = kept;
+    scratch.weighed = 0;
+    update(0);
+  }
   function update(rawDelta: number) {
     const delta = Math.min(rawDelta, 1 / 20);
     const p = web.position;
@@ -100,28 +150,31 @@ export function createDew(web: Web, drops: Drop[], look: Look, compact: boolean)
       scratch.weighed = 0.3;
       web.load.fill(0);
     }
-    for (let i = 0; i < drops.length; i++) {
-      const d = drops[i];
+    let visible = 0;
+    let kept = 0;
+    for (const d of drops) {
+      const seg = web.segments[d.seg];
+      if (!seg) continue;
       if (d.falling) {
         d.vy -= 3.2 * delta;
         d.x += d.vx * delta;
         d.y += d.vy * delta;
         d.z += d.vz * delta;
         if (d.y < -3.5) {
+          // A cut stitch sheds its drops once. Only intact silk can gather them again.
+          if (!seg.alive) continue;
           d.wait -= delta;
           if (d.wait <= 0) {
-            // A new drop gathers somewhere on the spiral.
-            const candidate = web.spiral[Math.floor(Math.random() * web.spiral.length)];
-            if (!web.segments[candidate].alive) continue;
-            d.seg = candidate;
             d.t = 0.1 + Math.random() * 0.8;
             d.grow = 0;
             d.falling = false;
           }
         }
       }
-      const seg = web.segments[d.seg];
+      drops[kept++] = d;
       if (!d.falling) {
+        if (seg.alive && (seg.draw ?? 1) < d.t) continue;
+
         d.grow = Math.min(1, d.grow + delta / 6);
         const a = seg.a * 3;
         const b = seg.b * 3;
@@ -154,14 +207,18 @@ export function createDew(web: Web, drops: Drop[], look: Look, compact: boolean)
       // Falling, it draws out a little with its speed.
       const stretch = d.falling ? Math.min(1.5, 1.07 + Math.abs(d.vy) * 0.08) : 1.07;
       scale.set(r / Math.sqrt(stretch / 1.07), r * stretch, r / Math.sqrt(stretch / 1.07));
-      mesh.setMatrixAt(i, matrix.compose(at, quiet, scale));
+      if (r > 0) mesh.setMatrixAt(visible++, matrix.compose(at, quiet, scale));
     }
+    drops.length = kept;
+    mesh.count = visible;
     if (reweigh) web.weigh();
     // Rewritten every frame, but only as far as the drops: left at the usual usage and given the range, so that three
     // uploads just that, once, rather than the whole buffer for every pass, as it does for one marked dynamic.
     mesh.instanceMatrix.clearUpdateRanges();
-    mesh.instanceMatrix.addUpdateRange(0, drops.length * 16);
-    mesh.instanceMatrix.needsUpdate = true;
+    if (visible > 0) {
+      mesh.instanceMatrix.addUpdateRange(0, visible * 16);
+      mesh.instanceMatrix.needsUpdate = true;
+    }
   }
-  return { mesh, update };
+  return {mesh, update, threadDew, removeThreadDew};
 }

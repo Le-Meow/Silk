@@ -1,4 +1,4 @@
-type Action = 'silk' | 'bite' | 'wrap';
+type Action = 'silk' | 'pluck' | 'next';
 type Callbacks = {
   active(): boolean;
   press(action: Action): void;
@@ -10,7 +10,7 @@ export function setupControls(callbacks: Callbacks) {
   const cap = document.getElementById('stick-cap')!;
   const game = document.getElementById('game')!;
   const keyActions: Record<string, Action> = {
-    ShiftLeft: 'silk', ShiftRight: 'silk', Space: 'bite', KeyE: 'wrap'
+    ShiftLeft: 'silk', ShiftRight: 'silk', Space: 'pluck', KeyE: 'next'
   };
   const keys = new Set<string>();
   const fingers = new Map<Action, number>();
@@ -69,7 +69,7 @@ export function setupControls(callbacks: Callbacks) {
   stick.addEventListener('pointercancel', endStick);
   stick.addEventListener('lostpointercapture', endStick);
 
-  for (const action of ['silk','bite','wrap'] as Action[]) {
+  for (const action of ['silk','pluck','next'] as Action[]) {
     const button = document.getElementById(action)!;
     button.addEventListener('pointerdown', e => {
       if (!callbacks.active() || fingers.has(action) || e.button !== 0) return;

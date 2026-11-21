@@ -18,6 +18,7 @@ export class SilkSteering {
   private seamX = 0;
   private seamY = 0;
   private trail: number[] = [];
+  private route: { nodes: number[]; next: number; speed: number } | null = null;
 
   constructor(private readonly web: Web) {
     this.reset(web.hub);
@@ -29,10 +30,42 @@ export class SilkSteering {
     return this.fraction < 0.5 ? edge.a : edge.b;
   }
 
+  get following() {
+    return this.route !== null;
+  }
+
+  private edgeBetween(a: number, b: number) {
+    return this.web.around[a]?.find(index => {
+      const edge = this.web.segments[index];
+      return edge.alive && (edge.a === b || edge.b === b);
+    });
+  }
+
+  follow(nodes: readonly number[], speed = 0.86) {
+    if (nodes[0] !== this.currentNode || !(speed > 0) || !Number.isFinite(speed)) return false;
+    const path = nodes.filter((n, i) => !i || n !== nodes[i - 1]);
+    for (let i = 1; i < path.length; i++) {
+      if (this.edgeBetween(path[i - 1], path[i]) === undefined) return false;
+    }
+    let next = 1;
+    if (this.currentEdge >= 0) {
+      const edge = this.web.segments[this.currentEdge];
+      if (!edge.alive) return false;
+      // Finish the partial strand physically before taking the first path edge.
+      this.direction = path[0] === edge.b ? 1 : -1;
+      next = 0;
+    }
+    this.preferredEdge = -1;
+    this.seamX = this.seamY = 0;
+    this.route = next < path.length ? { nodes: path, next, speed } : null;
+    return true;
+  }
+
   drive(x: number, y: number) {
     const magnitude = Math.hypot(x, y);
     if (!Number.isFinite(magnitude) || magnitude < 0.025) {
-      this.pressure = this.stickX = this.stickY = this.speed = 0;
+      this.pressure = this.stickX = this.stickY = 0;
+      if (!this.route) this.speed = 0;
       return;
     }
     this.pressure = Math.min(1, magnitude);
@@ -45,6 +78,7 @@ export class SilkSteering {
   }
 
   reset(node = this.web.hub) {
+    this.route = null;
     this.preferredEdge = -1;
     this.drive(0, 0);
     this.trail.length = 0;
@@ -142,16 +176,28 @@ export class SilkSteering {
 
   step(dt: number, fullSpeed: number) {
     const recovered = this.recover();
-    const speed = this.pressure * fullSpeed;
+    if (recovered) this.route = null;
+    const speed = this.route?.speed ?? this.pressure * fullSpeed;
     let budget = recovered ? 0 : dt * speed;
     let traveled = 0;
     const p = this.web.position;
-    if (this.pressure) this.bearing.set(this.stickX, this.stickY, 0);
+    if (this.pressure && !this.route) this.bearing.set(this.stickX, this.stickY, 0);
     // The cap only matters for collapsed coincident edges. A normal tick
     // crosses at most a few of the tiny hub rings.
     for (let hops = 0; budget > 1e-8 && hops < 32; hops++) {
       if (this.currentEdge < 0) {
-        this.chooseExit();
+        if (this.route) {
+          const id = this.edgeBetween(this.node, this.route.nodes[this.route.next]);
+          if (id === undefined) {
+            this.route = null;
+            break;
+          }
+          this.currentEdge = id;
+          this.direction = this.node === this.web.segments[id].a ? 1 : -1;
+          this.fraction = this.direction > 0 ? 0 : 1;
+        } else {
+          this.chooseExit();
+        }
         if (this.currentEdge >= 0) this.preferredEdge = -1;
       }
       if (this.currentEdge < 0) break;
@@ -165,7 +211,7 @@ export class SilkSteering {
       const along = bx * this.stickX + by * this.stickY;
       // Buffer a sideways turn until the junction; reversing the stick takes
       // effect on this frame, including halfway along a strand.
-      if (Math.abs(along) > 0.14) this.direction = Math.sign(along);
+      if (!this.route && Math.abs(along) > 0.14) this.direction = Math.sign(along);
       const length = Math.max(1e-8, Math.hypot(dx, dy, dz));
       const left = length * (this.direction > 0 ? 1 - this.fraction : this.fraction);
       const distance = Math.min(budget, left);
@@ -176,6 +222,10 @@ export class SilkSteering {
         this.fraction += distance * this.direction / length;
       } else {
         this.arrive(this.direction > 0 ? e.b : e.a);
+        if (this.route && ++this.route.next >= this.route.nodes.length) {
+          this.route = null;
+          break;
+        }
       }
     }
     this.speed = dt > 0 ? traveled / dt : 0;

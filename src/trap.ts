@@ -59,6 +59,22 @@ export class Trap {
     this.threads=this.threads.filter(t=>t!==thread);
     return recovered;
   }
+  // A stitch is unwound in reverse creation order, including any welds it added.
+  undoLast(){
+    const thread=this.threads.pop();
+    if(!thread)return;
+    const w=this.web, firstEdge=thread.edges[0], firstNode=thread.nodes[1];
+    for(let i=firstEdge;i<w.segments.length;i++){
+      const {a,b}=w.segments[i];
+      for(const n of [a,b])if(n<firstNode)w.around[n]=w.around[n].filter(e=>e<firstEdge);
+    }
+    this.bindings=this.bindings.filter(weld=>weld.edge<firstEdge);
+    w.segments.length=firstEdge;w.around.length=w.count=firstNode;
+    w.spiral=w.spiral.filter(e=>e<firstEdge);
+    w.position=w.position.subarray(0,3*firstNode);w.previous=w.previous.subarray(0,3*firstNode);
+    w.inverseMass=w.inverseMass.subarray(0,firstNode);w.pinned=w.pinned.subarray(0,firstNode);
+    w.load=w.load.subarray(0,firstNode);w.calm=w.calm.subarray(0,firstNode);w.shaken=w.shaken.subarray(0,firstNode);
+  }
   spin(a:number,b:number){
     const w=this.web, start=this.point(a), end=this.point(b),length=start.distanceTo(end);
     const count=Math.max(4,Math.ceil(length/.09)), extra=count-1;

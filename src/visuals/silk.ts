@@ -91,44 +91,53 @@ export function createSilk(web: Web, look: Look, camera: THREE.PerspectiveCamera
 
   // New stitches use the same shading and solver as the starting web.
   const base = web.segments.length;
-  const count = base + 1024;
-  const geometry = new THREE.InstancedBufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute([0, -1, 0, 1, -1, 0, 1, 1, 0, 0, 1, 0], 3));
-  geometry.setIndex([0, 1, 2, 0, 2, 3]);
-  // Each start carries the thread's width in its fourth place. Every thread moves every frame, so the whole of both is
-  // sent each frame, once: left at the usual usage, as three's WebGPU backend sends one marked dynamic again for every
-  // pass it is drawn in.
-  const from = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4);
-  const to = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
-  geometry.setAttribute("aFrom", from);
-  geometry.setAttribute("aTo", to);
-  // The frame and spokes are dry silk, thicker; the sticky spiral finer and beaded.
-  web.segments.forEach((s, i) => ((from.array as Float32Array)[i * 4 + 3] = s.kind === 2 ? 0.8 : s.kind === 0 ? 1.6 : 1.15));
-  geometry.instanceCount = base;
-  const mesh = new THREE.Mesh(geometry, material);
+  function allocate(capacity: number) {
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute([0, -1, 0, 1, -1, 0, 1, 1, 0, 0, 1, 0], 3));
+    geometry.setIndex([0, 1, 2, 0, 2, 3]);
+    const from = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4);
+    const to = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
+    geometry.setAttribute("aFrom", from);
+    geometry.setAttribute("aTo", to);
+    geometry.instanceCount = 0;
+    return {geometry, from, to};
+  }
+  let buffers = allocate(Math.max(512, base + 256));
+  const mesh = new THREE.Mesh(buffers.geometry, material);
   mesh.frustumCulled = false;
   mesh.renderOrder = 2;
   function update(height: number) {
-    geometry.instanceCount = Math.min(web.segments.length, count);
+    if (web.segments.length > buffers.from.count) {
+      mesh.geometry.dispose();
+      buffers = allocate(Math.max(web.segments.length, buffers.from.count * 2));
+      mesh.geometry = buffers.geometry;
+    }
+    const {geometry, from, to} = buffers;
     eye.value.copy(camera.position);
     camera.getWorldDirection(facing.value);
     pixel.value = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / Math.max(1, height);
     const p = web.position;
     const f = from.array as Float32Array;
     const t = to.array as Float32Array;
+    let visible = 0;
     web.segments.forEach((s, i) => {
-      if (i >= base) f[i * 4 + 3] = 2.9;
-      const o = i * 3;
-      const k = i * 4;
-      // A broken thread is gone: both its ends drawn at one.
-      const end = s.alive ? s.b : s.a;
-      f[k] = p[s.a * 3];
-      f[k + 1] = p[s.a * 3 + 1];
-      f[k + 2] = p[s.a * 3 + 2];
-      t[o] = p[end * 3];
-      t[o + 1] = p[end * 3 + 1];
-      t[o + 2] = p[end * 3 + 2];
+      const drawn = s.draw ?? 1;
+      if (!s.alive || s.binding || drawn <= 0) return;
+      const a = s.a * 3, b = s.b * 3;
+      const start = visible * 4, end = visible * 3;
+      f[start + 3] = i >= base ? 2.9 : s.kind === 2 ? 0.8 : s.kind === 0 ? 1.6 : 1.15;
+      for (let axis = 0; axis < 3; axis++) {
+        f[start + axis] = p[a + axis];
+        t[end + axis] = p[a + axis] + (p[b + axis] - p[a + axis]) * drawn;
+      }
+      visible++;
     });
+    geometry.instanceCount = visible;
+    if (!visible) return;
+    from.clearUpdateRanges();
+    to.clearUpdateRanges();
+    from.addUpdateRange(0, visible * 4);
+    to.addUpdateRange(0, visible * 3);
     from.needsUpdate = true;
     to.needsUpdate = true;
   }

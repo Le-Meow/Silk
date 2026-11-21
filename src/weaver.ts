@@ -262,7 +262,7 @@ export function createWeaver(web: Web, golden = false) {
 
   const node = (i: number, out: THREE.Vector3) => out.set(web.position[i * 3], web.position[i * 3 + 1], web.position[i * 3 + 2]);
   function hasGrip(n: number) {
-    return n >= 0 && web.around[n].some(index => web.segments[index].alive);
+    return n >= 0 && n < web.count && web.around[n].some(index => web.segments[index].alive);
   }
 
   function drive(x: number, y: number) {
@@ -541,6 +541,8 @@ export function createWeaver(web: Web, golden = false) {
   reset();
   return {
     object, step, action, reset, drive,
+    follow: (nodes: readonly number[], speed?: number) => steering.follow(nodes, speed),
+    get following() { return steering.following; },
     preferEdge: (index: number) => steering.preferEdge(index),
     heading: state.heading,
     position: state.at,

@@ -1,27 +1,24 @@
 <!doctype html>
-<html lang="en">
-<head>
+<html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#191913"><meta name="description" content="Play a garden orb-weaver. Read a moth’s flight, weave a trap, and ride the shivering silk.">
+<meta name="theme-color" content="#25271c"><meta name="description" content="An unhurried web-weaving game. Connect knots of silk and watch the dew gather in a sunlit garden.">
 <link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon-192.png">
-<title>Silk · The broken web</title>
-</head>
+<title>Silk · The weaving garden</title></head>
 <body><main id="game">
-<canvas id="scene" aria-label="Living orb web. Crawl with the left stick, WASD or arrow keys."></canvas>
-<div class="veil"></div>
-<header><span class="wordmark">Silk</span><button id="pause" aria-label="Pause encounter" aria-keyshortcuts="Escape" hidden><span aria-hidden="true"></span><kbd>Esc</kbd></button></header>
-<div id="hud" hidden><div><span>Silk reserve</span><strong id="reserve">100%</strong><meter id="meter" min="0" max="100" value="100"></meter></div><div><span>Moth pass</span><strong id="pass">1 / 3</strong></div></div>
-<div id="marks" hidden></div><div class="prey-target" hidden></div><div id="player-marker" aria-hidden="true" hidden></div>
-<section id="menu"><small id="eyebrow">The broken web</small><h1 id="title">Silk</h1><p id="copy">A moth circles a tear in your web. Cast a line across its path, bite it, then wind it in silk.</p>
-  <p id="menu-keys"><kbd>WASD</kbd> or <kbd>arrows</kbd> to move · <kbd>Shift</kbd> Silk · <kbd>Space</kbd> Bite · <kbd>E</kbd> Wrap</p>
-  <button id="begin" aria-keyshortcuts="Enter" disabled>Waking the garden…</button></section>
-<div id="guide" hidden><strong id="event">Read the flight</strong><p id="hint" aria-live="polite"></p></div>
+<canvas id="scene" aria-label="Three-dimensional garden and living silk web"></canvas><div class="veil"></div>
+<header><span class="wordmark">Silk</span><div id="tools" hidden>
+<button id="undo" disabled>Undo</button><button id="sound" aria-pressed="true">Sound on</button><button id="pause" aria-label="Pause game" aria-keyshortcuts="Escape"><span aria-hidden="true"></span></button></div></header>
+<div id="hud" hidden><span><strong id="strands">0</strong> <span id="strand-label">strands</span></span><i>·</i><span><strong id="loops">0</strong> <span id="loop-label">loops</span></span></div>
+<div id="marks" hidden><div id="preview"></div><div id="origin"></div><div id="glimmer" hidden></div></div>
+<section id="menu"><h1 id="title">The weaving garden</h1><p id="copy">One spider, a little morning light, and room to spin. Choose a glowing knot to lay your first thread.</p>
+<p id="menu-keys"><kbd>WASD</kbd> to crawl · <kbd>Shift</kbd> to weave · <kbd>E</kbd> to choose a knot · <kbd>Space</kbd> to pluck</p>
+<button id="begin" aria-keyshortcuts="Enter" disabled>Opening the garden…</button></section>
+<section id="guide" hidden aria-live="polite"><strong id="event">Your first stitch</strong><p id="hint">Tap the glowing dot or press Weave.</p></section>
 <div id="controller" hidden>
-  <div id="stick" role="group" aria-label="Movement stick. Arrow keys or WASD also move."><span class="notches"></span><span id="stick-cap"><kbd>WASD<br>or arrows</kbd></span></div>
-  <div class="buttons">
-    <button type="button" id="silk" aria-label="Aim and cast silk" aria-keyshortcuts="Shift"><span>Silk</span><kbd>Shift</kbd></button>
-    <button type="button" id="bite" aria-label="Bite" aria-keyshortcuts="Space"><span>Bite</span><kbd>Space</kbd></button>
-    <button type="button" id="wrap" aria-label="Wrap" aria-keyshortcuts="E"><span>Wrap</span><kbd>E</kbd></button>
-  </div>
-</div>
+<div id="stick" role="group" aria-label="Movement stick. WASD or arrow keys to crawl or aim."><span class="notches"></span><span id="stick-cap"><kbd>WASD</kbd></span></div>
+<div class="buttons">
+<button type="button" id="next" aria-keyshortcuts="E" aria-label="Select the next knot"><span>Next</span><kbd>E</kbd></button>
+<button type="button" id="silk" aria-keyshortcuts="Shift" aria-label="Weave to the selected knot"><span>Weave</span><kbd>Shift</kbd></button>
+<button type="button" id="pluck" aria-keyshortcuts="Space" aria-label="Pluck the silk"><span>Pluck</span><kbd>Space</kbd></button>
+</div></div>
 </main><script type="module" src="./src/main.ts"></script></body></html>

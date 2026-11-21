@@ -55,6 +55,7 @@ export class Web {
     kind: Kind;
     alive: boolean;
     binding?: boolean;
+    draw?: number;
   }[] = [];
   // For each point, the threads that meet there, for the spider to find its way.
   around: number[][] = [];
@@ -62,6 +63,7 @@ export class Web {
   radius = 1;
   // Spiral threads, for dew to sit on.
   spiral: number[] = [];
+  spokes: number[][] = [];
   grabbed = -1;
   target = new Float32Array(3);
   // Set by the scene: the wind's push this frame, along z mostly.
@@ -173,6 +175,7 @@ export class Web {
       onEdge[end.edge].push({ u: end.u, node });
     });
     this.count = points.length / 3;
+    this.spokes = along.map(ray => ray.map(point => point.node));
     corners.forEach((p, i) => {
       const chain = [p.node, ...onEdge[i].sort((a, b) => a.u - b.u).map((e) => e.node), corners[(i + 1) % corners.length].node];
       for (let k = 1; k < chain.length; k++) link(chain[k - 1], chain[k], Kind.Frame);
