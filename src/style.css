@@ -13,6 +13,9 @@ h1{font:italic 500 clamp(74px,15svh,150px)/.91 Georgia,serif;letter-spacing:-.07
 p{font-size:clamp(16px,2.1vw,19px);line-height:1.45;max-width:35ch;margin:0 0 19px;color:#ecebd9}
 .primary{border:1px solid #e9cc8f;background:#f3d895;color:#252a1b;min-height:50px;padding:12px 28px;border-radius:50px;font-weight:700;box-shadow:0 6px 26px #06160e40}
 .primary:active{transform:translateY(1px)}button:focus-visible{outline:3px solid white;outline-offset:4px}
+#begin{display:inline-flex;align-items:center;text-decoration:none;touch-action:manipulation}
+#begin:focus-visible{outline:3px solid white;outline-offset:4px}
+#game.intro #scene{pointer-events:none}
 #stats{display:flex;gap:24px;top:max(84px,calc(env(safe-area-inset-top) + 60px));left:clamp(20px,5vw,64px);text-shadow:0 1px 6px #07130d;font-size:14px}#stats b{font-variant-numeric:tabular-nums;color:#ffe5a5;font-size:19px}
 #controls{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;font-weight:600;text-shadow:0 2px 5px #142019}
 #wrap{touch-action:none;background:linear-gradient(90deg,#fff6cc var(--progress,0%),#edd294 var(--progress,0%))}

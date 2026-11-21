@@ -6,6 +6,8 @@ import './style.css';
 
 const el = <K extends HTMLElement = HTMLElement>(id:string) => document.getElementById(id) as K;
 const action = el<HTMLButtonElement>('action'), wrap = el<HTMLButtonElement>('wrap');
+const begin = el<HTMLAnchorElement>('begin');
+const directHunt = /\/play(?:\.html)?\/?$/.test(location.pathname);
 const panel=el('panel'), controls=el('controls'), target=el('target'), pause=el('pause'), stats=el('stats');
 const canvas=el<HTMLCanvasElement>('scene');
 const help='Tap a moth to follow its vibration.';
@@ -36,6 +38,8 @@ function play(){
     phase=next;const running=phase==='hunt';
     release();panel.hidden=running;controls.hidden=!running;stats.hidden=!(running||phase==='paused');
     pause.hidden=!running;target.hidden=!running;moth.object.visible=running||phase==='paused';
+    begin.hidden = next !== 'intro';
+    action.hidden = next === 'intro';
     el('game').classList.toggle('intro',phase==='intro');garden.resize(phase==='intro');
     const content={
       intro:['The garden hunt','Silk','Hunt as an orb-weaver. Follow the tremors and wrap five moths before dawn.','Begin the hunt'],
@@ -72,8 +76,24 @@ function play(){
     spider.goTo(id);
     web.previous[id*3+2]-=.013;
   }
-  function resize(){garden.resize(phase==='intro');}
+  function resize(){
+    garden.resize(phase==='intro');
+    if(phase!=='hunt') garden.render();
+  }
   new ResizeObserver(resize).observe(canvas);
+  // Some mobile views deliver the touch release without a compatibility click.
+  // The link also launches a hunt through native navigation during startup.
+  begin.addEventListener('pointerup', event => {
+    if(phase !== 'intro' || !event.isPrimary || event.pointerType !== 'touch') return;
+    const rect = begin.getBoundingClientRect();
+    if(event.clientX >= rect.left && event.clientX <= rect.right &&
+        event.clientY >= rect.top && event.clientY <= rect.bottom) start();
+  });
+  begin.addEventListener('click', event => {
+    if(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if(phase === 'intro') start();
+  });
   action.onclick=()=>{if(phase==='paused'){view('hunt');resumeAt=performance.now();}else start();};
   pause.onclick=()=>{if(phase==='hunt') view('paused');};
   canvas.addEventListener('pointerdown',e=>{
@@ -100,7 +120,7 @@ function play(){
     e.preventDefault(); if(phase==='hunt')view('paused');
     el('copy').textContent='The graphics session was interrupted. Reload to start a fresh web.';
     action.textContent='Reload';action.onclick=()=>location.reload();
-    if(phase==='intro') el('panel').hidden=false;
+    begin.hidden=true; action.hidden=false; panel.hidden=false;
   });
   function update(dt:number){
     clock+=dt; web.step(dt,3);spider.step(dt);
@@ -127,21 +147,25 @@ function play(){
   let prev=0;
   function frame(now:number){
     const elapsed=Math.max(0,Math.min((now-Math.max(prev||now,resumeAt))/1000,.15));prev=now;
-    if(phase==='hunt'||phase==='intro'){
+    if(phase==='hunt'){
       const steps=Math.max(1,Math.ceil(elapsed/(1/30)));
       for(let i=0;i<steps;i++)update(elapsed/steps);
     }
     if(phase==='hunt'){
       const mark=garden.screen(moth.object.position);target.style.left=mark.x+'px';target.style.top=mark.y+'px';
     }
-    if(!document.hidden)garden.render();requestAnimationFrame(frame);
+    if(phase==='hunt' && !document.hidden)garden.render();
+    requestAnimationFrame(frame);
   }
-  view('intro');requestAnimationFrame(frame);
+  if(directHunt) start();
+  else { view('intro'); spider.step(0); garden.render(); }
+  requestAnimationFrame(frame);
 }
 
 try { play(); } catch(error) {
   console.error(error);el('copy').textContent='Silk needs WebGL 2 to draw the web. Try a browser with hardware graphics enabled.';
-  action.disabled=false;action.textContent='Try again';action.onclick=()=>location.reload();
+  panel.hidden=false;controls.hidden=true;stats.hidden=true;target.hidden=true;pause.hidden=true;
+  begin.hidden=true;action.hidden=false;action.disabled=false;action.textContent='Try again';action.onclick=()=>location.reload();
 }
 if(import.meta.env.PROD && 'serviceWorker' in navigator){
   window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.warn));
