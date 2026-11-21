@@ -1,17 +1,19 @@
 # Silk
 
-A one-thumb Three.js game about life on an orb web. Tap the silk to steer the spider. Moths land on the web and send out tremors. Tap the moth to run along connected strands, then hold **Hold to wrap** when you reach it. Catch five moths in a minute. An individual moth can escape, and the next one will land somewhere else.
+A touch-controlled Three.js game about a garden orb-weaver. A moth repeatedly flies through a tear in the web. You have three passes and a limited supply of silk to intercept it.
 
-## Play and install
+## Playing
 
-Open the deployed game in a WebGL 2 browser. On iPhone, use Safari’s Share menu and select **Add to Home Screen**. On Android, use Chrome’s **Install app** or **Add to Home screen** menu item. The production build caches the game after the first successful online load. Pause with the top-right button. Leaving the app pauses the hunt.
+Drag between two golden knots to cast a strand. The spider reaches the first knot, lays a line across the opening and runs along it. The length of the strand determines its silk cost. Cross it with a second strand to bind the two together and give the trap more time under load. A line outside the moth’s flight path misses.
 
-On a keyboard, Enter targets the moth, Space wraps while held, and Escape pauses.
+When a moth strikes, tap it to crawl to the impact. Reaching it wraps the catch. If it struggles free, the strand tears and the moth returns through the same opening. You can also tap other threads to crawl, pull a strand and release it to shake the dew loose, or drag empty space to turn the view.
 
-## Development
+## Running the game
 
-Use Node.js 22.12 or later. Run `npm ci` followed by `npm run dev`. To build the installable app, run `npm run build` and serve `dist/` over HTTPS or localhost. Run `npm run preview` to inspect the production build locally.
+With Node.js 22.12 or newer, run `npm ci` and `npm run dev`. Run `npm run build` to create the installable app in `dist/`. Serve it over HTTPS or localhost. The production service worker caches the game after a successful online visit. The gameplay clip in `public/media/` downloads on demand.
 
 ## Credits
 
-The silk dynamics, web topology, pathfinding, spider anatomy and procedural gait are adapted from Adam Chernick’s [Tension](https://github.com/acher249/codevember-2026/tree/fa50d2a/14-tension), used under the [MIT license](public/TENSION-LICENSE.txt). Silk replaces the autonomous pluck response with player-directed movement, a timed hunt and hold-to-wrap controls. The scene uses [Three.js](https://threejs.org/) under its [MIT license](public/THREE-LICENSE.txt). Both notices ship with the app.
+The web solver, spider anatomy and gait, dew dynamics, silk shaders, garden and display effects are adapted from Adam Chernick’s [Tension](https://github.com/acher249/codevember-2026/tree/fa50d2a/14-tension) under the [MIT license](public/TENSION-LICENSE.txt). The mobile encounter adds a destructible opening, a player-built constraint network, strength from crossing strands, moth flight, pursuit, and wrapping. The playable spider has a mottled brown abdomen.
+
+The bark scans are Poly Haven’s CC0 [Bark Brown 02](https://polyhaven.com/a/bark_brown_02). Three.js is included under its [MIT license](public/THREE-LICENSE.txt).

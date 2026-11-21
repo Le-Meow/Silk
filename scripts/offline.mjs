@@ -2,7 +2,7 @@ import { copyFile, readdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 await copyFile('dist/index.html','dist/play.html');
 const files=(await readdir('dist',{recursive:true,withFileTypes:true}))
-  .filter(entry=>entry.isFile() && entry.name!=='sw.js')
+  .filter(entry=>entry.isFile() && entry.name!=='sw.js' && !entry.name.endsWith('.mp4'))
   .map(entry=>(entry.parentPath+'/'+entry.name).replace(/^dist\//,'')).sort();
 const digest=createHash('sha256');
 for(const file of files)digest.update(await readFile('dist/'+file));

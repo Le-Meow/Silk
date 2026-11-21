@@ -1,6 +1,11 @@
-// Adapted from Tension by Adam Chernick. See public/TENSION-LICENSE.txt.
-import * as THREE from "three";
+// Spider anatomy, materials, and gait adapted from Tension by Adam Chernick (MIT).
+// The complete license is distributed in public/TENSION-LICENSE.txt.
+import * as THREE from "three/webgpu";
+import { Fn, cameraPosition, color, dot, fract, max, mix, mx_fractal_noise_float, normalWorld, normalize, positionLocal, positionWorld, pow, smoothstep } from "three/tsl";
+import { sky } from "./visuals/backdrop";
 import type { Web } from "./web";
+
+/* eslint-disable @typescript-eslint/no-explicit-any -- TSL's node types do not model every operator. */
 
 // The web's owner, built and moved like the real animal. Each leg is coxa, femur, patella, tibia, metatarsus and tarsus,
 // of fixed lengths, solved each frame so the femur rises to a high knee and the lower leg comes down steeply to a foot
@@ -46,14 +51,61 @@ function shaped(shape: (p: THREE.Vector3) => void, wide = 32, high = 20) {
   return g;
 }
 
-export function createSpider(web: Web) {
-  const body = 0.18, legLength = 0.34, thick = 1;
-  const golden = false;
+export function createWeaver(web: Web, golden = false) {
+  const body = golden ? 0.2 : 0.13;
+  const legLength = golden ? 0.56 : 0.28;
+  const thick = golden ? 0.6 : 1;
   const parts = (() => {
-    const shell = new THREE.MeshStandardMaterial({color: '#603722', roughness: 0.42});
-    const belly = new THREE.MeshStandardMaterial({color: '#ab6837', roughness: 0.38});
-    const limb = new THREE.MeshStandardMaterial({color: '#855637', roughness: 0.48});
-    const eye = new THREE.MeshStandardMaterial({color: '#100f0e', roughness: 0.1});
+    // Hairy chitin: a soft bright fringe toward the light behind, as the fine hairs catch it.
+    const fuzz = (base: any, amount: number) =>
+      Fn(() => {
+        const V = normalize(cameraPosition.sub(positionWorld)) as any;
+        const N = normalize(normalWorld) as any;
+        const rim = pow(dot(N, V).abs().oneMinus(), 2.5) as any;
+        const back = pow(max(dot(V.negate(), sky.toLight), 0), 2)
+          .mul(0.7)
+          .add(0.3) as any;
+        return base.mul(0.08).add(sky.light.mul(rim.mul(back).mul(sky.power).mul(amount)));
+      })();
+    const grain = mx_fractal_noise_float(positionLocal.mul(400), 2, 2, 0.5) as any;
+
+    const shell = new THREE.MeshStandardNodeMaterial({ roughness: 0.4 });
+    const shellColour = (golden ? mix(color("#b9b4a0"), color("#efe9d0"), grain.mul(0.5).add(0.5)) : color("#4a3220").mul(grain.mul(0.25).add(1))) as any;
+    shell.colorNode = shellColour;
+    shell.emissiveNode = fuzz(shellColour, 0.5) as any;
+
+    // A mottled chestnut abdomen; the alternate golden species has rows of spots.
+    const belly = new THREE.MeshStandardNodeMaterial({ roughness: 0.35 });
+    const x = positionLocal.x.abs() as any;
+    const y = positionLocal.y as any;
+    const z = positionLocal.z as any;
+    let back: any;
+    if (golden) {
+      const rows = smoothstep(0.3, 0.12, fract(y.mul(4.5)).sub(0.5).abs().add(x.sub(0.45).abs().mul(1.4))) as any;
+      back = mix(mix(color("#6f6a2c"), color("#b8a648"), smoothstep(-0.6, 0.8, z)), color("#f3efe0"), rows.mul(smoothstep(0, 0.5, z)));
+    } else {
+      const mottling = mx_fractal_noise_float(positionLocal.mul(8.5), 3, 2, 0.5) as any;
+      const warmth = smoothstep(-0.5, 0.6, mottling);
+      back = mix(color("#4a3024"), color("#9e6c49"), warmth);
+    }
+    back = back.mul(grain.mul(0.15).add(1));
+    belly.colorNode = back;
+    belly.emissiveNode = fuzz(back, 0.45) as any;
+
+    // Legs banded segment by segment: pale along the middle of each, dark at the joints (golden: black and gold).
+    const band = positionLocal.y.sub(0.5).abs().mul(2).oneMinus() as any;
+    const limbColour = (golden ? mix(color("#191714"), color("#d6ad34"), smoothstep(0.42, 0.5, band)) : mix(color("#2a1a0f"), color("#8a5c34"), smoothstep(0.35, 0.55, band))).mul(
+      grain.mul(0.2).add(1)
+    ) as any;
+    const limb = new THREE.MeshStandardNodeMaterial({ roughness: 0.5 });
+    limb.colorNode = limbColour;
+    limb.emissiveNode = fuzz(limbColour, 0.7) as any;
+    const eye = new THREE.MeshStandardNodeMaterial({
+      roughness: 0.05,
+      metalness: 0.2,
+      color: "#050505"
+    });
+
     const group = new THREE.Group();
     const geometries: THREE.BufferGeometry[] = [];
     const add = (geometry: THREE.BufferGeometry, material: THREE.Material, at: [number, number, number], scale: [number, number, number], tilt = 0) => {
@@ -124,13 +176,6 @@ export function createSpider(web: Web) {
       golden ? [0, -b * 0.42, b * 0.1] : [0, -b * 0.3, b * 0.12],
       golden ? [b * 0.16, b * 0.5, b * 0.15] : [b * 0.32, b * 0.38, b * 0.3]
     );
-    const ivory = new THREE.MeshStandardMaterial({color: '#f5d9a0', roughness: 0.5});
-    for (const [x, y, radius] of [[0, 0.45, 0.13], [0, 0.13, 0.1], [0, -0.1, 0.075], [-0.29, 0.27, 0.1], [0.29, 0.27, 0.1]]) {
-      const spot = new THREE.Mesh(eyeBall, ivory);
-      spot.position.set(x, y, Math.sqrt(1 - x*x - y*y) * 1.06);
-      spot.scale.set(radius, radius * 0.8, 0.06);
-      abdomen.add(spot);
-    }
     // Spinnerets at the tip.
     add(new THREE.ConeGeometry(1, 2, 10), shell, golden ? [0, -b * 0.93, b * 0.08] : [0, -b * 0.68, b * 0.06], [b * 0.03, b * 0.025, b * 0.03], Math.PI);
 
@@ -159,15 +204,16 @@ export function createSpider(web: Web) {
   })();
 
   const state = {
-      route: [] as number[],
+      route: [web.hub],
       leg: 0,
       u: 0,
       speed: 0,
-
+      // Stop-go: how long the current dash or freeze lasts.
+      dash: 0,
+      frozen: 0,
       dip: 0,
       // When she last felt the web with a foreleg.
       tug: 2,
-
       at: new THREE.Vector3(),
       heading: new THREE.Vector3(0, -1, 0),
       // Which way she faces, as an angle in the web, turned by the shorter way round.
@@ -212,6 +258,65 @@ export function createSpider(web: Web) {
   };
 
   const node = (i: number, out: THREE.Vector3) => out.set(web.position[i * 3], web.position[i * 3 + 1], web.position[i * 3 + 2]);
+  function connected(a: number, b: number) {
+    return web.around[a].some(index => {
+      const edge = web.segments[index];
+      return edge.alive && (edge.a === b || edge.b === b);
+    });
+  }
+
+  function hasGrip(n: number) {
+    return n >= 0 && web.around[n].some(index => web.segments[index].alive);
+  }
+
+  function moving() {
+    return state.leg + 1 < state.route.length;
+  }
+
+  function currentNode() {
+    return state.route[state.leg + (moving() && state.u >= 0.5 ? 1 : 0)];
+  }
+
+  function stopAt(n: number) {
+    state.route = [n];
+    state.leg = 0;
+    state.u = 0;
+  }
+
+  function repairRoute() {
+    const s = state;
+    if (!moving() || connected(s.route[s.leg], s.route[s.leg + 1])) return;
+    const destination = s.route[s.route.length - 1];
+    const nearest = currentNode();
+    stopAt(nearest);
+    const alternate = web.path(nearest, destination);
+    if (alternate.length) s.route = alternate;
+  }
+
+  function goTo(destination: number) {
+    if (!Number.isInteger(destination) || destination < 0 || destination >= web.count) return false;
+    repairRoute();
+    const s = state;
+    const from = s.route[s.leg];
+    const next = moving() ? s.route[s.leg + 1] : from;
+    const tail = web.path(next, destination);
+    if (!tail.length) return false;
+    // A player may change direction while a foot is still on the current thread.
+    if (moving() && tail[1] === from) {
+      s.route = tail;
+      s.u = 1 - s.u;
+    } else if (moving()) {
+      s.route = [from, ...tail];
+    } else {
+      s.route = tail;
+      s.u = 0;
+    }
+    s.leg = 0;
+    s.frozen = 0;
+    s.dash = 0.35;
+    return true;
+  }
+
   // The thread point nearest a place, within a reach, for a foot to take hold of.
   // Never one another's: each foot takes a point no other foot holds or is reaching for.
   const grip = (at: THREE.Vector3, reach: number, avoid = -1) => {
@@ -222,7 +327,7 @@ export function createSpider(web: Web) {
     for (let i = 0; i < web.count; i++) {
       if (i === avoid || web.pinned[i] || held.includes(i)) continue;
       const d = (p[i * 3] - at.x) ** 2 + (p[i * 3 + 1] - at.y) ** 2 + (p[i * 3 + 2] - at.z) ** 2;
-      if (d < bestD) {
+      if (d < bestD && hasGrip(i)) {
         bestD = d;
         best = i;
       }
@@ -235,47 +340,66 @@ export function createSpider(web: Web) {
     const s = state;
     s.time += delta;
     const { a, b, d, right, up, want, hip, across, joints, basis, q, m } = s3;
-    const top = 1.0;
+    const top = golden ? 0.55 : 0.75;
     const turn = (toward: number, rate: number) => {
       const by = Math.atan2(Math.sin(toward - s.yaw), Math.cos(toward - s.yaw));
       s.yaw += by * (1 - Math.exp(-delta * rate));
       s.heading.set(Math.cos(s.yaw), Math.sin(s.yaw), 0);
     };
 
-    const moving = s.route.length > 1 && s.leg < s.route.length - 1;
-    const wanted = moving ? top : 0;
+    repairRoute();
+    // Keep the short stop-and-go accelerations of a real orb-weaver.
+    let wanted = 0;
+    if (moving()) {
+      if (s.frozen > 0) s.frozen -= delta;
+      else {
+        s.dash -= delta;
+        if (s.dash <= 0) {
+          s.frozen = 0.08 + Math.random() * 0.22;
+          s.dash = 0.25 + Math.random() * 0.45;
+        }
+        wanted = top;
+        const left = s.route.length - 1 - s.leg - s.u;
+        if (left < 3) wanted *= 0.35 + left * 0.2;
+      }
+    }
     s.speed += (wanted - s.speed) * (1 - Math.exp(-delta * (wanted > s.speed ? 14 : 22)));
 
-    if (moving) {
-      node(s.route[s.leg], a);
-      node(s.route[s.leg + 1], b);
-      s.u += (s.speed * delta) / Math.max(1e-4, a.distanceTo(b));
-      while (s.u >= 1 && s.leg < s.route.length - 1) {
-        s.u -= 1;
-        s.leg++;
-      }
-      if (s.leg >= s.route.length - 1) {
-        const end = s.route[s.route.length - 1];
-
-        s.route = [end];
-        s.leg = 0;
-        s.u = 0;
-      } else {
+    if (moving()) {
+      // Consume distance rather than a count of edges; player-spun silk can be much
+      // longer than the small ring segments around the hub.
+      let distance = s.speed * delta;
+      while (distance > 0 && moving()) {
+        repairRoute();
+        if (!moving()) break;
         node(s.route[s.leg], a);
         node(s.route[s.leg + 1], b);
-        // The body follows the route smoothly rather than turning hard at every crossing of threads, and faces the
-        // way it is actually going.
-        s3.want.copy(a).lerp(b, s.u);
-        d.copy(s.at);
-        s.at.lerp(s3.want, 1 - Math.exp(-delta * 16));
-        d.subVectors(s.at, d).setZ(0);
-        if (d.lengthSq() > 1e-12) turn(Math.atan2(d.y, d.x), 7);
+        const edgeLength = Math.max(1e-5, a.distanceTo(b));
+        const remaining = edgeLength * (1 - s.u);
+        if (distance < remaining) {
+          s.u += distance / edgeLength;
+          break;
+        }
+        distance -= remaining;
+        s.u = 0;
+        s.leg++;
       }
+      node(s.route[s.leg], a);
+      if (moving()) {
+        node(s.route[s.leg + 1], b);
+        a.lerp(b, s.u);
+      } else {
+        stopAt(s.route[s.leg]);
+      }
+      d.copy(s.at);
+      s.at.lerp(a, 1 - Math.exp(-delta * 20));
+      d.subVectors(s.at, d).setZ(0);
+      if (d.lengthSq() > 1e-12) turn(Math.atan2(d.y, d.x), 7);
     } else {
-      const rest = s.route[0] ?? web.hub;
+      const rest = currentNode();
       node(rest, a);
       if (!s.started) s.at.copy(a);
-      s.at.lerp(a, 1 - Math.exp(-delta * 10));
+      s.at.lerp(a, 1 - Math.exp(-delta * 18));
       if (rest === web.hub) {
         turn(-Math.PI / 2, 2);
         // Now and then she feels the web: a foreleg lifts and pulls on its thread, and the web shivers with it.
@@ -336,7 +460,11 @@ export function createSpider(web: Web) {
         .addScaledVector(s.heading, Math.cos(angle) * reach)
         .addScaledVector(right, Math.sin(angle) * reach * leg.side);
 
-      if (!s.started) {
+      if (leg.swing >= 0 && leg.toNode >= 0 && !hasGrip(leg.toNode)) {
+        leg.to.copy(leg.foot);
+        leg.toNode = -1;
+      }
+      if (!s.started || (leg.node >= 0 && !hasGrip(leg.node))) {
         leg.node = grip(want, length * 0.6);
         if (leg.node >= 0) node(leg.node, leg.foot);
         else leg.foot.copy(want);
@@ -470,23 +598,37 @@ export function createSpider(web: Web) {
     parts.spines.instanceMatrix.needsUpdate = true;
   }
 
-  const object = new THREE.Group();
-  object.add(parts.group, parts.segments, parts.joints, parts.spines);
-  function goTo(destination: number) {
-    // Finish the current edge before following a replacement route.
-    const inTransit = state.route.length > 1;
-    const next = state.route[inTransit ? state.leg + 1 : 0] ?? web.hub;
-    const tail = web.path(next, destination);
-    if (!tail.length) return;
-    state.route = inTransit ? [state.route[state.leg], ...tail] : tail;
-    state.leg = 0;
-    if (!inTransit) state.u = 0;
-  }
-  function reset() {
-    state.route = [web.hub]; state.leg = 0; state.u = 0; state.speed = 0;
-    state.started = false; state.yaw = -Math.PI / 2; state.heading.set(0,-1,0);
-    state.legs.forEach(leg => { leg.node = -1; leg.swing = -1; });
+  function reset(n = web.hub) {
+    stopAt(n);
+    node(n, state.at);
+    state.time = 0;
+    state.speed = state.dip = state.frozen = state.dash = 0;
+    state.tug = 2;
+    state.started = false;
+    state.yaw = -Math.PI / 2;
+    state.heading.set(0, -1, 0);
+    for (const leg of state.legs) {
+      leg.node = leg.toNode = -1;
+      leg.swing = -1;
+      leg.low = false;
+    }
     step(0);
   }
-  return {object, step, goTo, reset, position: state.at};
+
+  const object = new THREE.Group();
+  object.add(parts.group, parts.segments, parts.joints, parts.spines);
+  reset();
+  return {
+    object, step, goTo, reset,
+    position: state.at,
+    get currentNode() { return currentNode(); },
+    get moving() { return moving(); },
+    get ready() { return state.started; },
+    dispose() {
+      for (const geometry of new Set(parts.geometries)) geometry.dispose();
+      for (const material of parts.materials) material.dispose();
+      for (const mesh of [parts.segments, parts.joints, parts.spines]) mesh.dispose();
+      object.removeFromParent();
+    }
+  };
 }

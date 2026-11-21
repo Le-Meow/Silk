@@ -1,28 +1,19 @@
 *{box-sizing:border-box}
-:root{font-family:"Avenir Next",Avenir,system-ui,sans-serif;color:#fff6db;background:#102019;color-scheme:dark}
-body{margin:0} button{font:inherit;cursor:pointer} [hidden]{display:none!important}
-#game{height:100svh;width:100%;position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(ellipse at 73% 21%,#a3925a 0,#51684b 18%,#293f32 42%,#102019 75%);touch-action:none;user-select:none;-webkit-user-select:none}
-#scene,.shade{position:absolute;inset:0;width:100%;height:100%} .shade{pointer-events:none;background:linear-gradient(180deg,rgba(5,17,13,.55),transparent 23%,transparent 51%,rgba(8,20,15,.6) 74%,#0b1712 104%);z-index:1}
-header,#stats,#panel,#controls{position:absolute;z-index:2}
-header{top:max(env(safe-area-inset-top),20px);left:clamp(20px,5vw,64px);right:clamp(20px,5vw,64px);display:flex;align-items:center;justify-content:space-between}
-.brand{display:inline-flex;align-items:center;gap:9px;font:italic 30px/1.2 Georgia,serif}.mark{font:normal 30px/1 Georgia;color:#d8af65}
-.round{border:1px solid #d1d2a866;background:#16261ddb;color:#fff8df;width:46px;height:46px;border-radius:50%;font-weight:800}
-#panel,#controls{bottom:max(6svh,calc(env(safe-area-inset-bottom) + 16px));left:clamp(22px,7vw,100px);right:clamp(22px,7vw,100px)}
-.eyebrow{text-transform:uppercase;letter-spacing:.19em;font-size:.81rem;font-weight:700;color:#e4c88b}
-h1{font:italic 500 clamp(74px,15svh,150px)/.91 Georgia,serif;letter-spacing:-.075em;margin:.1em 0 .13em;text-shadow:0 3px 30px #102016}
-p{font-size:clamp(16px,2.1vw,19px);line-height:1.45;max-width:35ch;margin:0 0 19px;color:#ecebd9}
-.primary{border:1px solid #e9cc8f;background:#f3d895;color:#252a1b;min-height:50px;padding:12px 28px;border-radius:50px;font-weight:700;box-shadow:0 6px 26px #06160e40}
-.primary:active{transform:translateY(1px)}button:focus-visible{outline:3px solid white;outline-offset:4px}
-#begin{display:inline-flex;align-items:center;text-decoration:none;touch-action:manipulation}
-#begin:focus-visible{outline:3px solid white;outline-offset:4px}
-#game.intro #scene{pointer-events:none}
-#stats{display:flex;gap:24px;top:max(84px,calc(env(safe-area-inset-top) + 60px));left:clamp(20px,5vw,64px);text-shadow:0 1px 6px #07130d;font-size:14px}#stats b{font-variant-numeric:tabular-nums;color:#ffe5a5;font-size:19px}
-#controls{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;font-weight:600;text-shadow:0 2px 5px #142019}
-#wrap{touch-action:none;background:linear-gradient(90deg,#fff6cc var(--progress,0%),#edd294 var(--progress,0%))}
-#wrap:disabled{background:#1d3028db;color:#c7cdb9;border-color:#a7ac8a77;box-shadow:none}
-#target{position:absolute;border:1px solid #ffdf86;border-radius:50%;width:48px;height:48px;transform:translate(-50%,-50%);pointer-events:none;z-index:1;box-shadow:0 0 17px #e9bc5d55}#target i{position:absolute;inset:-3px;border:1px solid #ffdb8e;border-radius:50%;animation:ripple 1.45s ease-out infinite}
-@keyframes ripple{0%{transform:scale(.85);opacity:1}100%{transform:scale(1.6);opacity:0}}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-@media (min-aspect-ratio:3/2){#panel{max-width:37vw}#game.intro .shade{background:linear-gradient(90deg,rgba(7,19,15,.88),transparent 62%)}}
-@media (max-height:500px){header{top:10px}#panel,#controls{bottom:12px}h1{font-size:54px}p{margin:0 0 9px}#controls{align-items:flex-end;right:20px;font-size:14px}#stats{top:60px}}
-@media (prefers-reduced-motion:reduce){#target i{animation:none}}
+:root{font-family:system-ui,-apple-system,sans-serif;color:#fff7dd;background:#242117;color-scheme:dark}body{margin:0}button{font:inherit;cursor:pointer}button:focus-visible{outline:3px solid #fff;outline-offset:4px}[hidden]{display:none!important}
+#game{height:100vh;height:100svh;position:relative;overflow:hidden;isolation:isolate;user-select:none;-webkit-user-select:none;background:radial-gradient(ellipse at 68% 35%,#b1935a,#464631 45%,#211e14)}
+canvas,.veil,#marks{position:absolute;inset:0;width:100%;height:100%}canvas{touch-action:none}
+.veil{pointer-events:none;background:linear-gradient(180deg,#12150dae 0%,transparent 22%,transparent 71%,#100f0ad9 100%)}
+header,#hud,#menu,#guide{position:absolute;z-index:2}header{inset:max(16px,env(safe-area-inset-top)) 5% auto;display:flex;align-items:center;justify-content:space-between;pointer-events:none}
+.wordmark{font:italic 38px/1 Georgia,serif;text-shadow:0 2px 12px #1e170d}#pause{pointer-events:auto;min-width:44px;min-height:44px;background:#24261ba8;border:1px solid #e8d6a955;border-radius:50%;font-size:19px;color:#fff2ce}
+#hud{right:5%;top:max(75px,calc(env(safe-area-inset-top) + 56px));display:flex;gap:22px;text-shadow:0 1px 6px #100e09;pointer-events:none}
+#hud span,small{text-transform:uppercase;letter-spacing:.15em;font-size:12px;font-weight:700}#hud strong{display:block;font:21px/1.2 Georgia;font-variant-numeric:tabular-nums}
+meter{display:block;width:64px;height:5px;accent-color:#f9d991}meter::-webkit-meter-bar{background:#62533b;border:0}meter::-webkit-meter-optimum-value{background:#f3d392}
+#menu,#guide{left:clamp(22px,5vw,72px);right:clamp(22px,5vw,72px);bottom:max(25px,calc(env(safe-area-inset-bottom) + 15px));text-shadow:0 2px 16px #171307}
+#menu{max-width:370px}small{color:#f5db9d}h1{font:italic 68px/.95 Georgia,serif;letter-spacing:-.06em;margin:7px 0}
+p{font-size:16px;line-height:1.4;margin:7px 0 14px;text-wrap:pretty}#begin{background:#f2d79c;color:#302919;border:0;border-radius:30px;min-height:46px;padding:10px 24px;font-weight:700;touch-action:manipulation}
+#guide{pointer-events:none}#event{font:italic 27px/1.1 Georgia,serif}#hint{max-width:40ch;margin:5px 0 0}
+#marks,.prey-target{pointer-events:none}#marks{z-index:1}.knot,.prey-target{position:absolute;transform:translate(-50%,-50%);border-radius:50%;border:1px solid #ffe0a6bb;box-shadow:0 0 5px #46301980,inset 0 0 8px #e5cb8544}
+.knot{width:19px;height:19px;background:radial-gradient(circle,#fff2bd 0 1.5px,transparent 2px)}.knot.selected{border:2px solid #fff9d7;width:26px;height:26px}.prey-target{z-index:1;width:41px;height:41px;border-style:dashed;border-color:#fff2bb}
+@media(max-height:480px){header{top:9px}#hud{top:15px;right:18%}#guide,#menu{bottom:12px}h1{font-size:44px}#hint,#copy{font-size:14px}}
+
+#pause span{display:inline-block;width:11px;height:14px;border:solid currentColor;border-width:0 3px;vertical-align:middle}
