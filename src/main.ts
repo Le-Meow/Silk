@@ -232,8 +232,11 @@ async function boot(){
       const angle=flightTime/period*Math.PI*2;
       // A repeated three-dimensional approach. The moth passes behind the web on the far side of its orbit.
       const landing=angle-Math.PI*2;
-      moth.object.position.set(center.x+.60*Math.sin(landing),center.y+.24*(1-Math.cos(landing))+.07*Math.sin(2*landing),
-        center.z-.55*(1-Math.cos(landing))+.38*Math.sin(landing));
+      const x=center.x+.60*Math.sin(landing), y=center.y+.24*(1-Math.cos(landing))+.07*Math.sin(2*landing);
+      // The near pass cuts through the local depth of the breathing web. Its
+      // lateral flight is fixed, so a misplaced strand still leaves a clear passage.
+      const surface=trap.surfaceDepth(x,y,center.z);
+      moth.object.position.set(x,y,surface-.55*(1-Math.cos(landing))+.90*Math.sin(landing));
       moth.object.rotation.z=-Math.PI/2+.55*Math.sin(angle-.4);
       if(stage==='play'&&flightTime>period-.64){
         held=trap.contact(moth.object.position);

@@ -30,6 +30,18 @@ export class Trap {
   private bindings:{a:Thread;b:Thread;edge:number}[]=[];
   constructor(readonly web:Web) {}
   point(i:number,out=new Vector3()) { return out.fromArray(this.web.position,3*i); }
+  surfaceDepth(x:number,y:number,fallback:number){
+    const w=this.web,p=w.position;
+    let depth=fallback*.001,weight=.001;
+    for(let i=0;i<w.count;i++){
+      if(w.pinned[i])continue;
+      const dx=p[3*i]-x,dy=p[3*i+1]-y,r2=dx*dx+dy*dy;
+      if(r2>.06 || !w.around[i].some(e=>w.segments[e].alive))continue;
+      const influence=Math.exp(-r2/.005);
+      depth+=p[3*i+2]*influence;weight+=influence;
+    }
+    return depth/weight;
+  }
   private link(a:number,b:number) {
     const w=this.web;
     const i=w.segments.push({a,b,rest:Math.max(.002,this.point(a).distanceTo(this.point(b))*.999),kind:Kind.Spiral,alive:true})-1;
@@ -92,7 +104,7 @@ export class Trap {
   }
   // Contact is measured on each live length, including the space between crossings.
   contact(at:Vector3){
-    let best=.073, hit:null|{node:number;thread:Thread;edge:number}=null;
+    let best=.095, hit:null|{node:number;thread:Thread;edge:number}=null;
     const a=new Vector3(),b=new Vector3(),d=new Vector3(),q=new Vector3();
     for(const thread of this.threads) for(const edge of thread.edges){
       const seg=this.web.segments[edge];if(!seg.alive)continue;
