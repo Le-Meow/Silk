@@ -29,6 +29,7 @@ async function boot(){
   const key=new T.DirectionalLight(0xffe0aa,2.5);key.position.set(2,4,2);scene.add(key);
   const lens=createLens(renderer,scene,camera);
   const period=9, queue:Cast[]=[];
+  let reelOrder:null|{thread:Trap['threads'][number];knot:number}=null;
   let stage:Stage='intro', paused=false, pass=1, flightTime=0, clock=0;
   let silk=silkBudget, activeCast:Cast|null=null, crossing=false;
   let held:ReturnType<Trap['contact']>=null, struggle=0, struggled=0;
@@ -109,16 +110,31 @@ async function boot(){
   get('pause').onclick=pause;
   function cast(i:number,j:number){
     const a=knots[i],b=knots[j];if(a===b)return;
+    const reversed=trap.threads.find(t=>t.a===b&&t.b===a);
+    if(reversed){
+      if(held?.thread===reversed){note('Moth on this line','Tap the moth to reach it before the silk tears.');return;}
+      if(activeCast||queue.length){note('Spider is casting','Let her finish setting the line before reeling it back.');return;}
+      if(weaver.goTo(a)){reelOrder={thread:reversed,knot:a};note('Reeling in','The spider will recover the surviving silk at the knot.');}
+      return;
+    }
     const matches=(t:{a:number;b:number})=>(t.a===a&&t.b===b)||(t.a===b&&t.b===a);
     if(queue.some(matches)||(activeCast&&matches(activeCast))||trap.threads.some(t=>matches(t)&&trap.intact(t))){
       note('Already spun','Choose another pair of knots to brace the first strand.');return;
     }
     const cost=trap.point(a).distanceTo(trap.point(b));
     if(cost>silk+.025){note('Too far to cast','A shorter crossing costs less silk. You can still run to a trapped moth.');return;}
-    silk-=cost;reserve();queue.push({a,b,cost});
+    reelOrder=null;silk-=cost;reserve();queue.push({a,b,cost});
     note('Casting silk','The spider runs to the knot and pulls your new line across the gap.');
   }
   function advanceCast(){
+    if(reelOrder){
+      if(weaver.moving)return;
+      if(weaver.currentNode===reelOrder.knot && held?.thread!==reelOrder.thread){
+        silk=Math.min(silkBudget,silk+trap.reel(reelOrder.thread));reserve();
+        note('Silk recovered','Choose a new crossing on the moth’s flight path.');
+      }
+      reelOrder=null;
+    }
     if(!activeCast&&queue.length){
       activeCast=queue.shift()!;crossing=false;
       if(!weaver.goTo(activeCast.a) && weaver.currentNode!==activeCast.a){
@@ -139,14 +155,14 @@ async function boot(){
     // Moving overrides unfinished orders; only unspent silk is returned.
     for(const c of queue)silk+=c.cost;queue.length=0;
     if(activeCast&&!crossing)silk+=activeCast.cost;
-    activeCast=null;reserve();weaver.goTo(node);
+    activeCast=null;reelOrder=null;reserve();weaver.goTo(node);
   }
   function escape(torn:boolean){
     if(torn&&held){web.segments[held.edge].alive=false;trap.jolt(held.node,.08);}
     held=null;preyMark.hidden=true;
     if(pass===3){finish(false);return;}
     pass++;flightTime=0;get('pass').textContent=pass+' / 3';
-    note(torn?'The strand gave way':'The moth slipped through',torn?'The tear stays. Brace your next line or reach the impact sooner.':'It circles the same gap. Put a strand where its wings crossed.');
+    note(torn?'The strand gave way':'The moth slipped through','Drag a cast line in reverse to recover silk, or tug your trap into the next pass.');
   }
   function intercept(){
     if(!held)return;moveTo(held.node);

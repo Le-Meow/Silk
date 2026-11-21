@@ -36,6 +36,17 @@ export class Trap {
     w.around[a].push(i);w.around[b].push(i);return i;
   }
   intact(thread:Thread){return thread.edges.every(i=>this.web.segments[i].alive);}
+  reel(thread:Thread){
+    const w=this.web;
+    const recovered=thread.length*.9*thread.edges.filter(i=>w.segments[i].alive).length/thread.edges.length;
+    for(const edge of thread.edges)w.segments[edge].alive=false;
+    for(const binding of this.bindings){
+      if(binding.a===thread || binding.b===thread)w.segments[binding.edge].alive=false;
+    }
+    for(const node of thread.nodes.slice(1,-1)){w.pinned[node]=1;w.inverseMass[node]=0;}
+    this.threads=this.threads.filter(t=>t!==thread);
+    return recovered;
+  }
   spin(a:number,b:number){
     const w=this.web, start=this.point(a), end=this.point(b),length=start.distanceTo(end);
     const count=Math.max(4,Math.ceil(length/.09)), extra=count-1;

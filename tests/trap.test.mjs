@@ -41,3 +41,15 @@ test('a flight through empty air misses and contact requires a live thread', () 
   for (const edge of line.edges) web.segments[edge].alive = false;
   assert.equal(trap.contact(center), null);
 });
+
+test('reeling in a strand recovers surviving silk and removes its crossing', () => {
+  const {web, knots:[west,east,north,south], trap} = clearing();
+  const first = trap.spin(west, east);
+  const second = trap.spin(north, south);
+  web.segments[first.edges[0]].alive = false;
+  const refund = trap.reel(first);
+  assert.ok(refund > 0 && refund < first.length * .9);
+  assert.equal(trap.braced(second), false);
+  assert.ok(first.edges.every(e => !web.segments[e].alive));
+  assert.deepEqual(trap.threads, [second]);
+});
