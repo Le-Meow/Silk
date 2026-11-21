@@ -156,7 +156,11 @@ async function boot(){
     if(!aim)return;
     updateAim();
     const {origin,target}=aim;aim=null;line.visible=false;
-    if(canceled||!isPlaying()||target<0)return;
+    if(canceled){
+      note('Cast canceled','Steer along the web or aim another strand.');
+      return;
+    }
+    if(!isPlaying()||target<0)return;
     const distance=trap.point(origin).distanceTo(trap.point(target));
     const reverse=trap.threads.find(t=>t.a===target&&t.b===origin);
     if(reverse){

@@ -9,7 +9,9 @@ export function setupControls(callbacks: Callbacks) {
   const stick = document.getElementById('stick')!;
   const cap = document.getElementById('stick-cap')!;
   const game = document.getElementById('game')!;
-  const keyActions: Record<string, Action> = { KeyQ:'silk', KeyJ:'bite', KeyK:'wrap' };
+  const keyActions: Record<string, Action> = {
+    ShiftLeft: 'silk', ShiftRight: 'silk', Space: 'bite', KeyE: 'wrap'
+  };
   const keys = new Set<string>();
   const fingers = new Map<Action, number>();
   const axes = { x: 0, y: 0 };
@@ -89,6 +91,12 @@ export function setupControls(callbacks: Callbacks) {
   }
   const moveKeys = new Set(['KeyA','KeyW','KeyS','KeyD','ArrowLeft','ArrowUp','ArrowDown','ArrowRight']);
   window.addEventListener('keydown', e => {
+    // Leave Shift+Tab and browser shortcuts available without spending silk.
+    if (e.key === 'Tab' || e.metaKey || e.ctrlKey || e.altKey) {
+      keys.delete('ShiftLeft');
+      keys.delete('ShiftRight');
+      syncAction('silk', true);
+    }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const bound = moveKeys.has(e.code) || Boolean(keyActions[e.code]);
     if (bound || ['Tab','Enter','Escape'].includes(e.key)) game.dataset.input = 'keyboard';
